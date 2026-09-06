@@ -87,6 +87,7 @@ npm run preview
 | [docs/catalog-and-pipeline.md](docs/catalog-and-pipeline.md) | схема каталога, роли слоёв, нарезка исходников |
 | [docs/volume-and-assembly.md](docs/volume-and-assembly.md) | объёмные меши, анимация прилёта, камера, свет, звук |
 | [docs/debug-and-verification.md](docs/debug-and-verification.md) | URL-пресеты, `window.__atelier`, скрипты проверки |
+| [canvases/setup-on-another-pc.canvas.tsx](canvases/setup-on-another-pc.canvas.tsx) | пошаговый запуск на другом ПК, Windows-автоустановка |
 
 ## Структура репозитория
 
