@@ -96,6 +96,7 @@ npm run preview
 | [docs/catalog-and-pipeline.md](docs/catalog-and-pipeline.md) | схема каталога, роли слоёв, нарезка исходников |
 | [docs/assembly-and-flame.md](docs/assembly-and-flame.md) | полёты деталей, тень, Flame Wrap, камера, свет, звук |
 | [docs/debug-and-verification.md](docs/debug-and-verification.md) | URL-пресеты, `window.__atelier`, тесты |
+| [canvases/setup-flame-wrap-complete.canvas.tsx](canvases/setup-flame-wrap-complete.canvas.tsx) | чеклист запуска на другом ПК |
 
 ## Структура репозитория
 
@@ -119,6 +120,8 @@ scripts/
   verify-flame.mjs         # Playwright-проверка финала
   setup-windows.ps1        # автоустановка Windows, шаги 2–5
   setup-windows.cmd        # обёртка с Bypass ExecutionPolicy
+canvases/
+  setup-flame-wrap-complete.canvas.tsx  # чеклист запуска на другом ПК
 aurumbikes_images/         # исходные PNG Aurum / Manto
 .shots/                    # скриншоты verify-скрипта (gitignored)
 ```
