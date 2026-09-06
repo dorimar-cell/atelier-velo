@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { applyStudioEnvironment } from "./studio.js";
 import { createAssembler } from "./assemble.js";
 import { playComplete, playPlace, unlockAudio } from "./audio.js";
+import { createObjectView } from "./view.js";
 
 const canvas = document.querySelector("#stage");
 const typesEl = document.querySelector("[data-types]");
@@ -25,7 +26,6 @@ renderer.setClearColor(0xd5cfc2, 1);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 80);
-const look = new THREE.Vector3();
 
 applyStudioEnvironment(renderer, scene);
 
@@ -51,6 +51,7 @@ const catalog = await fetch("/parts/catalog.json").then((res) => res.json());
 const bike = createAssembler(catalog);
 bike.preload();
 scene.add(bike.root);
+const view = createObjectView(canvas, camera);
 
 let activeType = catalog.types[0].id;
 let lastComplete = false;
@@ -169,16 +170,15 @@ function frame() {
   }
   lastComplete = state.complete;
 
-  const mobile = window.innerWidth < 860;
-  camera.position.set(mobile ? 0.06 : 0.92, mobile ? 0.52 : 0.4, mobile ? 4.45 : 3.7);
-  look.set(mobile ? 0.04 : 0.96, mobile ? 0.28 : 0.14, 0);
-  camera.lookAt(look);
+  view.update(dt);
+  view.apply(bike.root);
   renderer.render(scene, camera);
 }
 
 resetEl.addEventListener("click", () => {
   unlockAudio();
   bike.reset();
+  view.reset();
   activeType = catalog.types[0].id;
   lastComplete = false;
   setStory(activeType);

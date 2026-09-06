@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createVolumeMesh, disposePartMesh, prepareSolid } from "./solid.js";
 
 const FROM = {
   frame: [-3.4, 0.55, 0.8],
@@ -91,31 +92,46 @@ export function createAssembler(catalog) {
       srcs.push(catalog.shadow.layers[0].src);
     }
     await Promise.all(srcs.map((src) => textureOf(src)));
+    for (const src of srcs) {
+      const texture = textures.get(src);
+      if (texture) prepareSolid(src, texture);
+    }
   }
 
   function worldOf(layer) {
     const pose = bboxToWorld(layer.bbox, catalog.canvas, worldH);
-    pose.z = layer.z * 0.0018;
+    pose.z = layer.z * 0.0024;
     return pose;
   }
 
-  function makeMesh(layer) {
+  function makeMesh(layer, type) {
     const pose = worldOf(layer);
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(pose.w, pose.h),
-      new THREE.MeshBasicMaterial({
-        map: textures.get(layer.src),
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        alphaTest: 0.04,
-      }),
-    );
-    mesh.renderOrder = layer.z;
-    mesh.position.set(pose.x, pose.y, pose.z);
-    mesh.userData.pose = pose;
-    mesh.userData.layer = layer;
-    return mesh;
+    if (type === "shadow" || layer.role === "shadow") {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(pose.w, pose.h),
+        new THREE.MeshBasicMaterial({
+          map: textures.get(layer.src),
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          alphaTest: 0,
+        }),
+      );
+      mesh.renderOrder = layer.z;
+      mesh.position.set(pose.x, pose.y, pose.z);
+      mesh.userData.pose = pose;
+      mesh.userData.layer = layer;
+      return mesh;
+    }
+
+    return createVolumeMesh({
+      texture: textures.get(layer.src),
+      src: layer.src,
+      pose,
+      type,
+      role: layer.role,
+      layer,
+    });
   }
 
   function spawnFrom(role, hint) {
@@ -179,7 +195,7 @@ export function createAssembler(catalog) {
     selected.set(option.type, option.id);
 
     option.layers.forEach((layer, index) => {
-      const mesh = makeMesh(layer);
+      const mesh = makeMesh(layer, option.type);
       const pose = mesh.userData.pose;
       if (instant) {
         mesh.visible = true;
@@ -206,7 +222,7 @@ export function createAssembler(catalog) {
     root.add(group);
     groups.set("shadow", group);
     for (const layer of option.layers) {
-      const mesh = makeMesh(layer);
+      const mesh = makeMesh(layer, "shadow");
       mesh.material.opacity = 0;
       mesh.material.alphaTest = 0;
       mesh.userData.fade = 0;
@@ -224,7 +240,16 @@ export function createAssembler(catalog) {
   function preload() {
     const srcs = catalog.options.flatMap((option) => option.layers.map((layer) => layer.src));
     if (catalog.shadow) srcs.push(catalog.shadow.layers[0].src);
-    srcs.forEach((src) => textureOf(src));
+    srcs.forEach((src) => {
+      textureOf(src).then((texture) => {
+        const run = () => prepareSolid(src, texture);
+        if (typeof requestIdleCallback === "function") {
+          requestIdleCallback(run, { timeout: 1800 });
+        } else {
+          window.setTimeout(run, 0);
+        }
+      });
+    });
   }
 
   function reset() {
@@ -251,8 +276,7 @@ export function createAssembler(catalog) {
       if (raw >= 1) {
         if (flight.mode === "out") {
           flight.mesh.removeFromParent();
-          flight.mesh.geometry.dispose();
-          flight.mesh.material.dispose();
+          disposePartMesh(flight.mesh);
           sweepLeaving();
         } else {
           flight.mesh.position.copy(flight.to);
