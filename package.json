@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "parts": "python scripts/process_parts.py"
+    "parts": "python scripts/process_parts.py",
+    "setup:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1"
   },
   "dependencies": {
     "three": "^0.170.0"

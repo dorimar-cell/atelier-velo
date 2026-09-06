@@ -40,6 +40,27 @@ npm run dev
 
 Откройте `http://localhost:5173`. Сервер слушает все интерфейсы (`host: true`), порт задан в `vite.config.js`.
 
+### Windows: шаги 2–5 одной командой
+
+Сначала вручную поставьте [Git](https://git-scm.com/downloads) и [Node.js 18+](https://nodejs.org/). Остальное делает скрипт: клон (если нужно), ветка, `npm install`, Vite, браузер с пресетом.
+
+На **новом ПК** в PowerShell:
+
+```powershell
+git clone https://github.com/dorimar-cell/atelier-velo.git
+cd atelier-velo
+git checkout feat/orbit-zoom-volume
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1
+```
+
+Если папка проекта уже есть:
+
+```powershell
+.\scripts\setup-windows.cmd
+```
+
+или `npm run setup:win`. Флаги: `-NoDev` (только зависимости), `-NoBrowser`, `-RebuildParts` (нарезка фото, правит `ROOT` в `process_parts.py`).
+
 Сборка и локальный просмотр продакшен-бандла:
 
 ```bash
