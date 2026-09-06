@@ -1,8 +1,6 @@
 import * as THREE from "three";
 
-// Studio environment adapted from Canvas UI ASCII Object (ascii: false).
-
-const HIGHLIGHT = "#4d7cff";
+const HIGHLIGHT = "#f0d7a2";
 
 const ROOM_BLOCKS = [
   { position: [-10.906, -1, 1.846], rotation: [0, -0.195, 0], scale: [2.328, 7.905, 4.651] },
@@ -14,15 +12,15 @@ const ROOM_BLOCKS = [
 ];
 
 const ROOM_FORMERS = [
-  { kind: "ring", intensity: 15, position: [2, 3, -2], scale: [10, 10, 10], lookAtCenter: true },
-  { kind: "box", intensity: 80, position: [-14, 10, 8], scale: [0.1, 2.5, 2.5] },
-  { kind: "box", intensity: 80, position: [-14, 14, -4], scale: [0.1, 2.5, 2.5], withLight: true },
-  { kind: "box", intensity: 23, position: [14, 12, 0], scale: [0.1, 5, 5], withLight: true },
-  { kind: "box", intensity: 16, position: [0, 9, 14], scale: [5, 5, 0.1], withLight: true },
-  { kind: "box", intensity: 80, position: [7, 8, -14], scale: [2.5, 2.5, 0.1], withLight: true },
-  { kind: "box", intensity: 80, position: [-7, 16, -14], scale: [2.5, 2.5, 0.1], withLight: true },
-  { kind: "box", intensity: 1, position: [0, 20, 0], scale: [0.1, 0.1, 0.1], withLight: true },
-  { kind: "box", intensity: 20, position: [0, 15, 0], scale: [10, 1, 10], withLight: true },
+  { kind: "ring", intensity: 10, position: [2, 3, -2], scale: [10, 10, 10], lookAtCenter: true },
+  { kind: "box", intensity: 96, position: [-14, 10, 8], scale: [0.1, 2.5, 2.5] },
+  { kind: "box", intensity: 96, position: [-14, 14, -4], scale: [0.1, 2.5, 2.5], withLight: true },
+  { kind: "box", intensity: 36, position: [14, 12, 0], scale: [0.1, 5, 5], withLight: true },
+  { kind: "box", intensity: 28, position: [0, 9, 14], scale: [5, 5, 0.1], withLight: true },
+  { kind: "box", intensity: 90, position: [7, 8, -14], scale: [2.5, 2.5, 0.1], withLight: true },
+  { kind: "box", intensity: 90, position: [-7, 16, -14], scale: [2.5, 2.5, 0.1], withLight: true },
+  { kind: "box", intensity: 4, position: [0, 20, 0], scale: [0.1, 0.1, 0.1], withLight: true },
+  { kind: "box", intensity: 34, position: [0, 15, 0], scale: [10, 1, 10], withLight: true },
 ];
 
 function buildRoom() {
@@ -37,27 +35,27 @@ function buildRoom() {
     [15, -15],
     [-15, -15],
   ]) {
-    const spot = new THREE.SpotLight(0xffffff, 2, 0, 0.2, 1, 0);
+    const spot = new THREE.SpotLight(0xfff6e8, 3.4, 0, 0.28, 1, 0);
     spot.position.set(x, 20, z);
     room.add(spot, spot.target);
   }
 
-  const center = new THREE.PointLight(0xffffff, 100, 28, 2);
+  const center = new THREE.PointLight(0xfff4e4, 140, 32, 2);
   center.position.set(0.5, 14, 0.5);
   room.add(center);
 
   const box = new THREE.BoxGeometry();
   const shell = new THREE.Mesh(
     box,
-    new THREE.MeshStandardMaterial({ color: "gray", side: THREE.BackSide }),
+    new THREE.MeshStandardMaterial({ color: "#e7e1d6", side: THREE.BackSide }),
   );
   shell.position.set(0, 13.2, 0);
   shell.scale.set(31.5, 28.5, 31.5);
   room.add(shell);
 
-  const white = new THREE.MeshStandardMaterial({ color: 0xffffff });
+  const plaster = new THREE.MeshStandardMaterial({ color: 0xf4efe6 });
   for (const def of ROOM_BLOCKS) {
-    const mesh = new THREE.Mesh(box, white);
+    const mesh = new THREE.Mesh(box, plaster);
     mesh.position.set(...def.position);
     mesh.rotation.set(...def.rotation);
     mesh.scale.set(...def.scale);
@@ -72,7 +70,7 @@ function buildRoom() {
       toneMapped: false,
     });
     material.color
-      .set(def.kind === "ring" ? HIGHLIGHT : "#ffffff")
+      .set(def.kind === "ring" ? HIGHLIGHT : "#fff7ea")
       .multiplyScalar(def.intensity);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(...def.position);
@@ -80,7 +78,7 @@ function buildRoom() {
     if (def.lookAtCenter) mesh.lookAt(0, 0, 0);
     room.add(mesh);
     if (def.withLight) {
-      const light = new THREE.PointLight(0xffffff, 100, 28, 2);
+      const light = new THREE.PointLight(0xfff3df, 120, 30, 2);
       light.position.set(...def.position);
       room.add(light);
     }
@@ -94,8 +92,20 @@ export function applyStudioEnvironment(renderer, scene) {
   const roomScene = buildRoom();
   const envTarget = pmrem.fromScene(roomScene, 0, 0.1, 1000);
   scene.environment = envTarget.texture;
-  scene.environmentIntensity = 1.05;
-  scene.background = new THREE.Color("#08090d");
+  scene.environmentIntensity = 1.42;
+  scene.background = new THREE.Color("#d5cfc2");
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(6.4, 64),
+    new THREE.MeshStandardMaterial({
+      color: 0xc9c0b1,
+      roughness: 0.92,
+      metalness: 0.02,
+    }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -1.18;
+  scene.add(floor);
 
   return () => {
     envTarget.dispose();

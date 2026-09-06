@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Atelier Vélo</title>
+    <title>Atelier Vélo — Aurum Manto</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -14,17 +14,25 @@
   </head>
   <body>
     <canvas id="stage"></canvas>
-    <div class="scroll-track" aria-hidden="true"></div>
     <div class="ui">
-      <div class="ui-veil"></div>
       <header>
         <p class="brand">Atelier Vélo</p>
-        <p class="step" data-step>00 / 10</p>
+        <p class="step" data-step>00 / 08</p>
       </header>
-      <div class="chapters" data-chapters></div>
+      <section class="story">
+        <p class="kicker" data-kicker>Ателье</p>
+        <h1 data-title>Соберите велосипед из живых деталей</h1>
+        <p class="lede" data-lede>
+          Начните с рамы. Каждая выбранная деталь прилетает на своё место фиксации.
+        </p>
+      </section>
+      <aside class="dock">
+        <div class="types" data-types></div>
+        <div class="options" data-options></div>
+      </aside>
       <footer>
         <div class="rail" data-rail></div>
-        <p class="hint">Прокрутите</p>
+        <button class="reset" type="button" data-reset>Сбросить</button>
       </footer>
     </div>
     <script type="module" src="/src/main.js"></script>

@@ -1,0 +1,762 @@
+{
+  "canvas": [
+    2048,
+    1366
+  ],
+  "types": [
+    {
+      "id": "frame",
+      "kicker": "01 — Основа",
+      "title": "Рама",
+      "lede": "Выберите раму. Она прилетит на место фиксации — с этого силуэта начинается сборка."
+    },
+    {
+      "id": "wheels",
+      "kicker": "02 — Опора",
+      "title": "Колёса",
+      "lede": "Переднее и заднее колесо вылетают по отдельности и садятся в дропауты."
+    },
+    {
+      "id": "handlebar",
+      "kicker": "03 — Управление",
+      "title": "Руль",
+      "lede": "Вынос и дропы фиксируются на рулевой колонке."
+    },
+    {
+      "id": "saddle",
+      "kicker": "04 — Посадка",
+      "title": "Седло",
+      "lede": "Подседельный штырь и седло входят в верх трубы рамы."
+    },
+    {
+      "id": "groupset",
+      "kicker": "05 — Привод",
+      "title": "Групсет",
+      "lede": "Шатуны с цепью и переключатель — отдельно от манетки. Каждая деталь на своё место."
+    },
+    {
+      "id": "cassette",
+      "kicker": "06 — Кассета",
+      "title": "Кассета",
+      "lede": "Звёзды садятся на заднюю втулку."
+    },
+    {
+      "id": "brakes",
+      "kicker": "07 — Тормоза",
+      "title": "Тормоза",
+      "lede": "Диски и калиперы разлетаются на переднюю и заднюю оси."
+    },
+    {
+      "id": "bottles",
+      "kicker": "08 — Аксессуары",
+      "title": "Флягодержатели",
+      "lede": "Держатели встают на бобышки рамы."
+    }
+  ],
+  "options": [
+    {
+      "id": "artik-white",
+      "type": "frame",
+      "name": "Artik White",
+      "layers": [
+        {
+          "id": "artik-white-frame",
+          "src": "/parts/artik-white-frame.png",
+          "role": "frame",
+          "z": 20,
+          "bbox": [
+            418,
+            326,
+            1157,
+            667
+          ]
+        },
+        {
+          "id": "artik-white-interior",
+          "src": "/parts/artik-white-interior.png",
+          "role": "interior",
+          "z": 21,
+          "bbox": [
+            455,
+            462,
+            438,
+            487
+          ]
+        }
+      ],
+      "thumb": "/parts/artik-white-thumb.png"
+    },
+    {
+      "id": "gris-veleta",
+      "type": "frame",
+      "name": "Gris Veleta",
+      "layers": [
+        {
+          "id": "gris-veleta-frame",
+          "src": "/parts/gris-veleta-frame.png",
+          "role": "frame",
+          "z": 20,
+          "bbox": [
+            424,
+            325,
+            1217,
+            667
+          ]
+        },
+        {
+          "id": "gris-veleta-interior",
+          "src": "/parts/gris-veleta-interior.png",
+          "role": "interior",
+          "z": 21,
+          "bbox": [
+            466,
+            465,
+            417,
+            478
+          ]
+        }
+      ],
+      "thumb": "/parts/gris-veleta-thumb.png"
+    },
+    {
+      "id": "astur",
+      "type": "frame",
+      "name": "Astur",
+      "layers": [
+        {
+          "id": "astur-frame",
+          "src": "/parts/astur-frame.png",
+          "role": "frame",
+          "z": 20,
+          "bbox": [
+            424,
+            326,
+            1153,
+            665
+          ]
+        },
+        {
+          "id": "astur-interior",
+          "src": "/parts/astur-interior.png",
+          "role": "interior",
+          "z": 21,
+          "bbox": [
+            463,
+            467,
+            421,
+            481
+          ]
+        }
+      ],
+      "thumb": "/parts/astur-thumb.png"
+    },
+    {
+      "id": "scope-artech",
+      "type": "wheels",
+      "name": "Scope Artech 4G",
+      "layers": [
+        {
+          "id": "scope-artech-rear",
+          "src": "/parts/scope-artech-rear.png",
+          "role": "rear",
+          "z": 8,
+          "bbox": [
+            101,
+            475,
+            762,
+            767
+          ]
+        },
+        {
+          "id": "scope-artech-front",
+          "src": "/parts/scope-artech-front.png",
+          "role": "front",
+          "z": 9,
+          "bbox": [
+            1167,
+            476,
+            772,
+            765
+          ]
+        }
+      ],
+      "thumb": "/parts/scope-artech-thumb.png"
+    },
+    {
+      "id": "scope-r4g",
+      "type": "wheels",
+      "name": "Scope R-Series 4G",
+      "layers": [
+        {
+          "id": "scope-r4g-rear",
+          "src": "/parts/scope-r4g-rear.png",
+          "role": "rear",
+          "z": 8,
+          "bbox": [
+            101,
+            475,
+            762,
+            767
+          ]
+        },
+        {
+          "id": "scope-r4g-front",
+          "src": "/parts/scope-r4g-front.png",
+          "role": "front",
+          "z": 9,
+          "bbox": [
+            1167,
+            476,
+            772,
+            765
+          ]
+        }
+      ],
+      "thumb": "/parts/scope-r4g-thumb.png"
+    },
+    {
+      "id": "zipp-303",
+      "type": "wheels",
+      "name": "Zipp 303 XPLR SW",
+      "layers": [
+        {
+          "id": "zipp-303-rear",
+          "src": "/parts/zipp-303-rear.png",
+          "role": "rear",
+          "z": 8,
+          "bbox": [
+            101,
+            475,
+            762,
+            767
+          ]
+        },
+        {
+          "id": "zipp-303-front",
+          "src": "/parts/zipp-303-front.png",
+          "role": "front",
+          "z": 9,
+          "bbox": [
+            1167,
+            476,
+            772,
+            765
+          ]
+        }
+      ],
+      "thumb": "/parts/zipp-303-thumb.png"
+    },
+    {
+      "id": "manto-bar",
+      "type": "handlebar",
+      "name": "Manto carbon",
+      "layers": [
+        {
+          "id": "manto-bar-handlebar",
+          "src": "/parts/manto-bar-handlebar.png",
+          "role": "handlebar",
+          "z": 40,
+          "bbox": [
+            1276,
+            254,
+            259,
+            206
+          ]
+        }
+      ],
+      "thumb": "/parts/manto-bar-thumb.png"
+    },
+    {
+      "id": "nack-seat",
+      "type": "saddle",
+      "name": "Nack",
+      "layers": [
+        {
+          "id": "nack-seat-saddle",
+          "src": "/parts/nack-seat-saddle.png",
+          "role": "saddle",
+          "z": 35,
+          "bbox": [
+            531,
+            169,
+            282,
+            281
+          ]
+        }
+      ],
+      "thumb": "/parts/nack-seat-thumb.png"
+    },
+    {
+      "id": "sram-red",
+      "type": "groupset",
+      "name": "SRAM RED XPLR",
+      "layers": [
+        {
+          "id": "sram-red-drivetrain",
+          "src": "/parts/sram-red-drivetrain.png",
+          "role": "drivetrain",
+          "z": 30,
+          "bbox": [
+            371,
+            836,
+            763,
+            228
+          ]
+        },
+        {
+          "id": "sram-red-shifter",
+          "src": "/parts/sram-red-shifter.png",
+          "role": "shifter",
+          "z": 41,
+          "bbox": [
+            1465,
+            228,
+            154,
+            203
+          ]
+        }
+      ],
+      "thumb": "/parts/sram-red-thumb.png"
+    },
+    {
+      "id": "sram-force",
+      "type": "groupset",
+      "name": "SRAM Force XPLR",
+      "layers": [
+        {
+          "id": "sram-force-drivetrain",
+          "src": "/parts/sram-force-drivetrain.png",
+          "role": "drivetrain",
+          "z": 30,
+          "bbox": [
+            329,
+            825,
+            812,
+            278
+          ]
+        },
+        {
+          "id": "sram-force-shifter",
+          "src": "/parts/sram-force-shifter.png",
+          "role": "shifter",
+          "z": 41,
+          "bbox": [
+            1465,
+            217,
+            158,
+            194
+          ]
+        }
+      ],
+      "thumb": "/parts/sram-force-thumb.png"
+    },
+    {
+      "id": "sram-rival",
+      "type": "groupset",
+      "name": "SRAM Rival",
+      "layers": [
+        {
+          "id": "sram-rival-drivetrain",
+          "src": "/parts/sram-rival-drivetrain.png",
+          "role": "drivetrain",
+          "z": 30,
+          "bbox": [
+            337,
+            836,
+            789,
+            245
+          ]
+        },
+        {
+          "id": "sram-rival-shifter",
+          "src": "/parts/sram-rival-shifter.png",
+          "role": "shifter",
+          "z": 41,
+          "bbox": [
+            1470,
+            220,
+            164,
+            212
+          ]
+        }
+      ],
+      "thumb": "/parts/sram-rival-thumb.png"
+    },
+    {
+      "id": "campagnolo",
+      "type": "groupset",
+      "name": "Campagnolo 1×13",
+      "layers": [
+        {
+          "id": "campagnolo-drivetrain",
+          "src": "/parts/campagnolo-drivetrain.png",
+          "role": "drivetrain",
+          "z": 30,
+          "bbox": [
+            336,
+            837,
+            800,
+            215
+          ]
+        },
+        {
+          "id": "campagnolo-shifter",
+          "src": "/parts/campagnolo-shifter.png",
+          "role": "shifter",
+          "z": 41,
+          "bbox": [
+            1467,
+            200,
+            159,
+            217
+          ]
+        }
+      ],
+      "thumb": "/parts/campagnolo-thumb.png"
+    },
+    {
+      "id": "shimano-grx",
+      "type": "groupset",
+      "name": "Shimano GRX",
+      "layers": [
+        {
+          "id": "shimano-grx-drivetrain",
+          "src": "/parts/shimano-grx-drivetrain.png",
+          "role": "drivetrain",
+          "z": 30,
+          "bbox": [
+            373,
+            755,
+            757,
+            342
+          ]
+        },
+        {
+          "id": "shimano-grx-shifter",
+          "src": "/parts/shimano-grx-shifter.png",
+          "role": "shifter",
+          "z": 41,
+          "bbox": [
+            1463,
+            216,
+            158,
+            197
+          ]
+        }
+      ],
+      "thumb": "/parts/shimano-grx-thumb.png"
+    },
+    {
+      "id": "cass-xplr",
+      "type": "cassette",
+      "name": "SRAM XPLR",
+      "layers": [
+        {
+          "id": "cass-xplr-cassette",
+          "src": "/parts/cass-xplr-cassette.png",
+          "role": "cassette",
+          "z": 22,
+          "bbox": [
+            375,
+            777,
+            180,
+            180
+          ]
+        }
+      ],
+      "thumb": "/parts/cass-xplr-thumb.png"
+    },
+    {
+      "id": "cass-red",
+      "type": "cassette",
+      "name": "SRAM RED XPLR",
+      "layers": [
+        {
+          "id": "cass-red-cassette",
+          "src": "/parts/cass-red-cassette.png",
+          "role": "cassette",
+          "z": 22,
+          "bbox": [
+            377,
+            781,
+            171,
+            171
+          ]
+        }
+      ],
+      "thumb": "/parts/cass-red-thumb.png"
+    },
+    {
+      "id": "cass-campa",
+      "type": "cassette",
+      "name": "Campagnolo 1×13",
+      "layers": [
+        {
+          "id": "cass-campa-cassette",
+          "src": "/parts/cass-campa-cassette.png",
+          "role": "cassette",
+          "z": 22,
+          "bbox": [
+            378,
+            783,
+            168,
+            169
+          ]
+        }
+      ],
+      "thumb": "/parts/cass-campa-thumb.png"
+    },
+    {
+      "id": "cass-grx",
+      "type": "cassette",
+      "name": "Shimano GRX",
+      "layers": [
+        {
+          "id": "cass-grx-cassette",
+          "src": "/parts/cass-grx-cassette.png",
+          "role": "cassette",
+          "z": 22,
+          "bbox": [
+            377,
+            786,
+            178,
+            190
+          ]
+        }
+      ],
+      "thumb": "/parts/cass-grx-thumb.png"
+    },
+    {
+      "id": "brake-force",
+      "type": "brakes",
+      "name": "SRAM Force",
+      "layers": [
+        {
+          "id": "brake-force-rear",
+          "src": "/parts/brake-force-rear.png",
+          "role": "rear",
+          "z": 16,
+          "bbox": [
+            377,
+            775,
+            182,
+            183
+          ]
+        },
+        {
+          "id": "brake-force-front",
+          "src": "/parts/brake-force-front.png",
+          "role": "front",
+          "z": 17,
+          "bbox": [
+            1464,
+            763,
+            182,
+            184
+          ]
+        }
+      ],
+      "thumb": "/parts/brake-force-thumb.png"
+    },
+    {
+      "id": "brake-xplr",
+      "type": "brakes",
+      "name": "SRAM XPLR",
+      "layers": [
+        {
+          "id": "brake-xplr-rear",
+          "src": "/parts/brake-xplr-rear.png",
+          "role": "rear",
+          "z": 16,
+          "bbox": [
+            374,
+            772,
+            263,
+            183
+          ]
+        },
+        {
+          "id": "brake-xplr-front",
+          "src": "/parts/brake-xplr-front.png",
+          "role": "front",
+          "z": 17,
+          "bbox": [
+            1446,
+            755,
+            199,
+            194
+          ]
+        }
+      ],
+      "thumb": "/parts/brake-xplr-thumb.png"
+    },
+    {
+      "id": "brake-campa",
+      "type": "brakes",
+      "name": "Campagnolo",
+      "layers": [
+        {
+          "id": "brake-campa-rear",
+          "src": "/parts/brake-campa-rear.png",
+          "role": "rear",
+          "z": 16,
+          "bbox": [
+            381,
+            772,
+            278,
+            182
+          ]
+        },
+        {
+          "id": "brake-campa-front",
+          "src": "/parts/brake-campa-front.png",
+          "role": "front",
+          "z": 17,
+          "bbox": [
+            1436,
+            752,
+            202,
+            202
+          ]
+        }
+      ],
+      "thumb": "/parts/brake-campa-thumb.png"
+    },
+    {
+      "id": "brake-shimano",
+      "type": "brakes",
+      "name": "Shimano",
+      "layers": [
+        {
+          "id": "brake-shimano-rear",
+          "src": "/parts/brake-shimano-rear.png",
+          "role": "rear",
+          "z": 16,
+          "bbox": [
+            387,
+            792,
+            195,
+            173
+          ]
+        },
+        {
+          "id": "brake-shimano-front",
+          "src": "/parts/brake-shimano-front.png",
+          "role": "front",
+          "z": 17,
+          "bbox": [
+            1457,
+            763,
+            184,
+            183
+          ]
+        }
+      ],
+      "thumb": "/parts/brake-shimano-thumb.png"
+    },
+    {
+      "id": "brake-red",
+      "type": "brakes",
+      "name": "SRAM RED XPLR",
+      "layers": [
+        {
+          "id": "brake-red-rear",
+          "src": "/parts/brake-red-rear.png",
+          "role": "rear",
+          "z": 16,
+          "bbox": [
+            518,
+            787,
+            199,
+            131
+          ]
+        },
+        {
+          "id": "brake-red-front",
+          "src": "/parts/brake-red-front.png",
+          "role": "front",
+          "z": 17,
+          "bbox": [
+            1445,
+            740,
+            76,
+            108
+          ]
+        }
+      ],
+      "thumb": "/parts/brake-red-thumb.png"
+    },
+    {
+      "id": "bottles-two",
+      "type": "bottles",
+      "name": "Два держателя",
+      "layers": [
+        {
+          "id": "bottles-two-seat",
+          "src": "/parts/bottles-two-seat.png",
+          "role": "seat",
+          "z": 25,
+          "bbox": [
+            859,
+            674,
+            110,
+            169
+          ]
+        },
+        {
+          "id": "bottles-two-down",
+          "src": "/parts/bottles-two-down.png",
+          "role": "down",
+          "z": 26,
+          "bbox": [
+            993,
+            615,
+            128,
+            148
+          ]
+        }
+      ],
+      "thumb": "/parts/bottles-two-thumb.png"
+    },
+    {
+      "id": "bottles-one",
+      "type": "bottles",
+      "name": "Один держатель",
+      "layers": [
+        {
+          "id": "bottles-one-down",
+          "src": "/parts/bottles-one-down.png",
+          "role": "down",
+          "z": 26,
+          "bbox": [
+            993,
+            615,
+            128,
+            148
+          ]
+        }
+      ],
+      "thumb": "/parts/bottles-one-thumb.png"
+    }
+  ],
+  "shadow": {
+    "id": "shadow",
+    "type": "shadow",
+    "name": "Тень",
+    "layers": [
+      {
+        "id": "shadow-shadow",
+        "src": "/parts/shadow-shadow.png",
+        "role": "shadow",
+        "z": 1,
+        "bbox": [
+          195,
+          1194,
+          1668,
+          80
+        ]
+      }
+    ],
+    "thumb": null
+  }
+}

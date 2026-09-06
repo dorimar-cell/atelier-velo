@@ -1,5 +1,4 @@
 let ctx = null;
-let armed = true;
 
 export function unlockAudio() {
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -8,53 +7,35 @@ export function unlockAudio() {
   if (ctx.state === "suspended") ctx.resume();
 }
 
-function tone(time, freq, duration = 1.05) {
+function blip(time, freq, duration, gainValue) {
   const osc = ctx.createOscillator();
-  const partial = ctx.createOscillator();
   const gain = ctx.createGain();
   const filter = ctx.createBiquadFilter();
-
   osc.type = "triangle";
   osc.frequency.setValueAtTime(freq, time);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.82, time + duration);
-
-  partial.type = "sine";
-  partial.frequency.setValueAtTime(freq * 2.15, time);
-  partial.frequency.exponentialRampToValueAtTime(freq * 1.6, time + duration);
-
   filter.type = "lowpass";
-  filter.frequency.setValueAtTime(4200, time);
-  filter.Q.value = 1.1;
-
+  filter.frequency.setValueAtTime(2400, time);
   gain.gain.setValueAtTime(0.0001, time);
-  gain.gain.exponentialRampToValueAtTime(0.2, time + 0.012);
+  gain.gain.exponentialRampToValueAtTime(gainValue, time + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-
   osc.connect(filter);
-  partial.connect(filter);
   filter.connect(gain);
   gain.connect(ctx.destination);
-
   osc.start(time);
-  partial.start(time);
   osc.stop(time + duration);
-  partial.stop(time + duration);
 }
 
-function ring() {
+export function playPlace() {
+  if (!ctx) return;
+  const now = ctx.currentTime + 0.01;
+  blip(now, 420, 0.16, 0.07);
+  blip(now + 0.05, 620, 0.2, 0.05);
+}
+
+export function playComplete() {
   if (!ctx) return;
   const now = ctx.currentTime + 0.02;
-  tone(now, 1568);
-  tone(now + 0.17, 1865);
-}
-
-export function syncBell(progress) {
-  if (progress > 0.88 && armed) {
-    armed = false;
-    unlockAudio();
-    ring();
-    return true;
-  }
-  if (progress < 0.32) armed = true;
-  return false;
+  blip(now, 523, 0.28, 0.08);
+  blip(now + 0.12, 659, 0.32, 0.07);
+  blip(now + 0.24, 784, 0.4, 0.06);
 }
