@@ -44,6 +44,27 @@ npm run dev
 
 Откройте `http://localhost:5173`. Сервер слушает все интерфейсы (`host: true`), порт задан в `vite.config.js`.
 
+### Windows: шаги 2–5 одной командой
+
+Сначала вручную поставьте [Git](https://git-scm.com/downloads) и [Node.js 18+](https://nodejs.org/). Остальное делает скрипт: клон (если нужно), ветка `feat/flame-wrap-complete`, `npm install`, Vite и браузер с snap-пресетом. Flame Wrap нарастает около 2.2 с после открытия.
+
+На **новом ПК** в PowerShell:
+
+```powershell
+git clone https://github.com/dorimar-cell/atelier-velo.git
+cd atelier-velo
+git checkout feat/flame-wrap-complete
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1
+```
+
+Если папка проекта уже есть:
+
+```powershell
+.\scripts\setup-windows.cmd
+```
+
+или `npm run setup:win`. Флаги: `-NoDev` (только зависимости), `-NoBrowser`, `-RebuildParts` (нарезка фото, правит `ROOT` в `process_parts.py`).
+
 Сборка и локальный просмотр продакшен-бандла:
 
 ```bash
@@ -61,6 +82,7 @@ npm run preview
 | `npm run parts` | пересобрать PNG-слои и `catalog.json` из `aurumbikes_images/` |
 | `npm test` | юнит-тесты раскладки Flame Wrap |
 | `npm run test:flame` | Playwright: пустая сцена → пресет → Reset |
+| `npm run setup:win` | Windows: клон / ветка / `npm install` / Vite / пресет |
 
 `parts` требует Python 3 и пакеты `numpy`, `Pillow`, `scipy`. Скрипт **удаляет все существующие PNG** в `public/parts/` и пишет их заново.
 
@@ -95,6 +117,8 @@ public/parts/
 scripts/
   process_parts.py         # нарезка исходных фото
   verify-flame.mjs         # Playwright-проверка финала
+  setup-windows.ps1        # автоустановка Windows, шаги 2–5
+  setup-windows.cmd        # обёртка с Bypass ExecutionPolicy
 aurumbikes_images/         # исходные PNG Aurum / Manto
 .shots/                    # скриншоты verify-скрипта (gitignored)
 ```
