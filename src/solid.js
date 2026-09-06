@@ -1,25 +1,25 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-const PREP_MAX = 256;
-const MESH_MAX = 300;
+const PREP_MAX = 320;
+const MESH_MAX = 420;
 const AXLE_COLOR = "#2b2b2d";
 const STEEL_COLOR = "#9a9894";
-const ROTOR_COLOR = "#8d8d90";
+const ROTOR_COLOR = "#9c9ca0";
 
 const TYPE_PRESET = {
-  frame: { maxHalf: 0.09, zScale: 1.12, roughness: 0.52, metalness: 0.02, clearcoat: 0.05 },
+  frame: { maxHalf: 0.078, zScale: 1.04, roughness: 0.56, metalness: 0.02, clearcoat: 0.04 },
   wheels: { maxHalf: 0.07, zScale: 1, roughness: 0.54, metalness: 0.04, clearcoat: 0.04 },
-  handlebar: { maxHalf: 0.048, zScale: 1.22, roughness: 0.56, metalness: 0.03, clearcoat: 0.04 },
-  saddle: { maxHalf: 0.072, zScale: 1.7, roughness: 0.68, metalness: 0.02, clearcoat: 0.02 },
-  groupset: { maxHalf: 0.05, zScale: 1.08, roughness: 0.44, metalness: 0.16, clearcoat: 0.04 },
+  handlebar: { maxHalf: 0.034, zScale: 1.04, roughness: 0.6, metalness: 0.03, clearcoat: 0.03 },
+  saddle: { maxHalf: 0.03, zScale: 1.02, roughness: 0.66, metalness: 0.02, clearcoat: 0.02 },
+  groupset: { maxHalf: 0.042, zScale: 1.02, roughness: 0.46, metalness: 0.14, clearcoat: 0.04 },
   cassette: { maxHalf: 0.07, zScale: 1, roughness: 0.38, metalness: 0.22, clearcoat: 0.03 },
-  brakes: { maxHalf: 0.022, zScale: 0.9, roughness: 0.46, metalness: 0.12, clearcoat: 0.03 },
-  bottles: { maxHalf: 0.036, zScale: 1.42, roughness: 0.55, metalness: 0.04, clearcoat: 0.03 },
+  brakes: { maxHalf: 0.016, zScale: 0.86, roughness: 0.42, metalness: 0.18, clearcoat: 0.04 },
+  bottles: { maxHalf: 0.028, zScale: 1.08, roughness: 0.56, metalness: 0.04, clearcoat: 0.03 },
 };
 
 const ROLE_PRESET = {
-  interior: { maxHalf: 0.022, zScale: 0.58, roughness: 0.58, metalness: 0.08, clearcoat: 0.02 },
+  interior: { maxHalf: 0.008, zScale: 0.34, roughness: 0.62, metalness: 0.03, clearcoat: 0.02 },
 };
 
 const maskCache = new Map();
@@ -77,7 +77,7 @@ function downsampleMask(image, maxSize) {
         }
       }
       const o = y * width + x;
-      mask[o] = maxA >= 38 ? 1 : 0;
+      mask[o] = maxA >= 88 ? 1 : 0;
       const p = o * 4;
       if (weight > 0) {
         rgba[p] = Math.round(r / weight);
@@ -217,6 +217,238 @@ function boxBlur(src, width, height) {
     }
   }
   return out;
+}
+
+function boxBlurN(src, width, height, passes) {
+  let cur = src;
+  for (let i = 0; i < passes; i += 1) cur = boxBlur(cur, width, height);
+  return cur;
+}
+
+function sampleField(field, width, height, x, y) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(width - 1, x0 + 1);
+  const y1 = Math.min(height - 1, y0 + 1);
+  const tx = x - x0;
+  const ty = y - y0;
+  const xx0 = Math.min(width - 1, Math.max(0, x0));
+  const yy0 = Math.min(height - 1, Math.max(0, y0));
+  const a = field[yy0 * width + xx0];
+  const b = field[yy0 * width + x1];
+  const c = field[y1 * width + xx0];
+  const d = field[y1 * width + x1];
+  return a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty;
+}
+
+function signedDistance(mask, width, height) {
+  const inv = new Uint8Array(mask.length);
+  for (let i = 0; i < mask.length; i += 1) inv[i] = mask[i] ? 0 : 1;
+  const inside = distanceTransform(mask, width, height);
+  const outside = distanceTransform(inv, width, height);
+  const sdf = new Float32Array(mask.length);
+  for (let i = 0; i < mask.length; i += 1) sdf[i] = mask[i] ? inside[i] : -outside[i];
+  return sdf;
+}
+
+function resampleField(src, srcW, srcH, dstW, dstH) {
+  const out = new Float32Array(dstW * dstH);
+  for (let y = 0; y < dstH; y += 1) {
+    for (let x = 0; x < dstW; x += 1) {
+      const sx = ((x + 0.5) * srcW) / dstW - 0.5;
+      const sy = ((y + 0.5) * srcH) / dstH - 0.5;
+      out[y * dstW + x] = sampleField(src, srcW, srcH, sx, sy);
+    }
+  }
+  return out;
+}
+
+function meshLimit(pose) {
+  const span = Math.max(pose.w, pose.h);
+  if (span > 1.55) return Math.min(MESH_MAX, 420);
+  if (span > 0.9) return 340;
+  return 260;
+}
+
+function maskToLocal(x, y, width, height, pose) {
+  return {
+    x: (x / width - 0.5) * pose.w,
+    y: (0.5 - y / height) * pose.h,
+  };
+}
+
+function topCentroid(mask, width, height, x0, y0, x1, y1) {
+  const left = Math.max(0, Math.floor(x0));
+  const top = Math.max(0, Math.floor(y0));
+  const right = Math.min(width, Math.ceil(x1));
+  const bottom = Math.min(height, Math.ceil(y1));
+  let minY = height;
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      if (!mask[y * width + x]) continue;
+      if (y < minY) minY = y;
+    }
+  }
+  if (minY >= height) return null;
+  const band = Math.max(2, Math.floor((bottom - top) * 0.045));
+  return maskCentroid(mask, width, height, left, minY, right, Math.min(bottom, minY + band + 1));
+}
+
+function sliceAxis(mask, width, height, x0, x1, y0, y1) {
+  const pts = [];
+  for (let y = y0; y < y1; y += 1) {
+    const c = maskCentroid(mask, width, height, x0, y, x1, y + 1);
+    if (c) pts.push(c);
+  }
+  if (pts.length < 3) return null;
+  const a = pts[0];
+  const b = pts[pts.length - 1];
+  return { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, dx: b.x - a.x, dy: b.y - a.y, n: pts.length };
+}
+
+function deepColor(rgba, field, width, height, minDepth = 1.5) {
+  const samples = [];
+  for (let i = 0; i < field.length; i += 1) {
+    if (field[i] < minDepth) continue;
+    const p = i * 4;
+    if (rgba[p + 3] < 24) continue;
+    const r = rgba[p];
+    const g = rgba[p + 1];
+    const b = rgba[p + 2];
+    samples.push([r, g, b, (r + g + b) / 3]);
+  }
+  if (!samples.length) return averageOpaqueColor(rgba, field.map((v) => (v > 0 ? 1 : 0)), width, height);
+  samples.sort((a, b) => a[3] - b[3]);
+  const median = samples[Math.floor(samples.length / 2)][3];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (const sample of samples) {
+    if (Math.abs(sample[3] - median) > 36) continue;
+    r += sample[0];
+    g += sample[1];
+    b += sample[2];
+    n += 1;
+  }
+  if (!n) {
+    const mid = samples[Math.floor(samples.length / 2)];
+    return new THREE.Color(mid[0] / 255, mid[1] / 255, mid[2] / 255);
+  }
+  return new THREE.Color(r / n / 255, g / n / 255, b / n / 255);
+}
+
+function clipMask(mask, width, height, x0, x1) {
+  const out = new Uint8Array(mask.length);
+  const left = Math.max(0, Math.floor(x0));
+  const right = Math.min(width, Math.ceil(x1));
+  for (let y = 0; y < height; y += 1) {
+    for (let x = left; x < right; x += 1) out[y * width + x] = mask[y * width + x];
+  }
+  return out;
+}
+
+function scoreCircle(mask, width, height, cx, cy, radius) {
+  if (radius < 6) return 0;
+  let ringOn = 0;
+  let ringTot = 0;
+  let innerOn = 0;
+  let innerTot = 0;
+  const r0 = radius * 0.16;
+  const r1 = radius * 0.82;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+      if (d > radius * 1.04) continue;
+      const on = mask[y * width + x];
+      if (d >= r1) {
+        ringTot += 1;
+        if (on) ringOn += 1;
+      } else if (d >= r0) {
+        innerTot += 1;
+        if (on) innerOn += 1;
+      }
+    }
+  }
+  if (ringTot < 12) return 0;
+  const ring = ringOn / ringTot;
+  const inner = innerTot ? innerOn / innerTot : 0;
+  return ring * 0.72 + Math.min(inner, 0.85) * 0.28;
+}
+
+function fitRotorCircle(mask, width, height) {
+  const candidates = [fitCircle(mask, width, height)];
+  if (width > height * 1.12) {
+    candidates.push(fitCircle(clipMask(mask, width, height, 0, width * 0.72), width, height));
+    candidates.push(fitCircle(clipMask(mask, width, height, width * 0.28, width), width, height));
+  }
+  let best = null;
+  let bestScore = 0.42;
+  for (const circle of candidates) {
+    if (!circle) continue;
+    const score = scoreCircle(mask, width, height, circle.cx, circle.cy, circle.radius);
+    if (score > bestScore) {
+      best = circle;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function extractCaliperMask(mask, width, height, circle) {
+  const seen = new Uint8Array(mask.length);
+  const out = new Uint8Array(mask.length);
+  const qx = new Int32Array(mask.length);
+  const qy = new Int32Array(mask.length);
+  let kept = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const start = y * width + x;
+      if (!mask[start] || seen[start]) continue;
+      let head = 0;
+      let tail = 0;
+      qx[0] = x;
+      qy[0] = y;
+      tail = 1;
+      seen[start] = 1;
+      const cells = [];
+      let maxD = 0;
+      while (head < tail) {
+        const cx = qx[head];
+        const cy = qy[head];
+        head += 1;
+        const i = cy * width + cx;
+        cells.push(i);
+        const d = Math.hypot(cx + 0.5 - circle.cx, cy + 0.5 - circle.cy);
+        if (d > maxD) maxD = d;
+        const next = [
+          [cx + 1, cy],
+          [cx - 1, cy],
+          [cx, cy + 1],
+          [cx, cy - 1],
+        ];
+        for (const [nx, ny] of next) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (!mask[ni] || seen[ni]) continue;
+          seen[ni] = 1;
+          qx[tail] = nx;
+          qy[tail] = ny;
+          tail += 1;
+        }
+      }
+      if (maxD < circle.radius * 1.1 || cells.length < 22) continue;
+      for (const i of cells) {
+        const cx = i % width;
+        const cy = Math.floor(i / width);
+        const d = Math.hypot(cx + 0.5 - circle.cx, cy + 0.5 - circle.cy);
+        if (d < circle.radius * 0.84) continue;
+        out[i] = 1;
+        kept += 1;
+      }
+    }
+  }
+  return kept >= 22 ? out : null;
 }
 
 function sampleRgba(rgba, width, height, px, py) {
@@ -539,14 +771,26 @@ function makeGeometry(positions, uvs, indices) {
   return geometry;
 }
 
-function buildInflateKit(data, pose, preset) {
-  const grid = shrinkForMesh(data, MESH_MAX);
-  const filled = fillSmallHoles(grid.mask, grid.width, grid.height);
-  const { rgba, width, height } = grid;
-  const mask = filled;
-  const dt = boxBlur(distanceTransform(mask, width, height), width, height);
-  const localR = maxFilter(dt, width, height, 2);
-  const solid = mask;
+function buildInflateKit(data, pose, preset, maskOverride) {
+  const sourceMask = maskOverride ?? data.mask;
+  const filled = fillSmallHoles(sourceMask, data.width, data.height);
+  const limit = meshLimit(pose);
+  const srcW = data.width;
+  const srcH = data.height;
+  const scale = Math.min(1, limit / Math.max(srcW, srcH));
+  const width = Math.max(2, Math.round(srcW * scale));
+  const height = Math.max(2, Math.round(srcH * scale));
+  const sdfHi = boxBlurN(signedDistance(filled, srcW, srcH), srcW, srcH, 2);
+  const sdf = boxBlurN(resampleField(sdfHi, srcW, srcH, width, height), width, height, 2);
+  const localR = maxFilter(
+    sdf.map((v) => Math.max(0, v)),
+    width,
+    height,
+    3,
+  );
+  const solid = new Uint8Array(width * height);
+  for (let i = 0; i < sdf.length; i += 1) solid[i] = sdf[i] > 0.28 ? 1 : 0;
+  const mask = solid;
   const sx = pose.w / width;
   const sy = pose.h / height;
   const sz = ((sx + sy) * 0.5) * (preset.zScale ?? 1);
@@ -558,7 +802,7 @@ function buildInflateKit(data, pose, preset) {
     for (let x = 0; x < width; x += 1) {
       const i = y * width + x;
       if (!solid[i]) continue;
-      const d = dt[i];
+      const d = Math.max(0, sdf[i]);
       const radius = Math.max(d, localR[i]);
       let z = Math.sqrt(Math.max(0, d * (2 * radius - d))) * sz;
       z = Math.max(z, minHalf);
@@ -566,19 +810,23 @@ function buildInflateKit(data, pose, preset) {
     }
   }
 
-  for (let pass = 0; pass < 2; pass += 1) {
+  for (let pass = 0; pass < 8; pass += 1) {
     const next = heights.slice();
     for (let y = 1; y < height - 1; y += 1) {
       for (let x = 1; x < width - 1; x += 1) {
         const i = y * width + x;
-        if (!mask[i] || dt[i] < 1.15) continue;
-        let sum = heights[i] * 2;
-        let n = 2;
+        if (!mask[i] || sdf[i] < 0.55) continue;
+        let sum = heights[i] * 3;
+        let n = 3;
         for (const [dx, dy] of [
           [1, 0],
           [-1, 0],
           [0, 1],
           [0, -1],
+          [1, 1],
+          [1, -1],
+          [-1, 1],
+          [-1, -1],
         ]) {
           const j = (y + dy) * width + (x + dx);
           if (!solid[j]) continue;
@@ -604,6 +852,11 @@ function buildInflateKit(data, pose, preset) {
         !solid[i + 1] ||
         !solid[i - width] ||
         !solid[i + width];
+      const edgeZ = Math.max(0.0064, minHalf * 0.34);
+      if (edge || sdf[i] < 1.15) {
+        const t = Math.min(1, Math.max(0, sdf[i] / 1.15));
+        heights[i] = edgeZ + (heights[i] - edgeZ) * t * t;
+      }
       if (edge) heights[i] = Math.min(heights[i], Math.max(0.007, minHalf * 0.42));
     }
   }
@@ -634,29 +887,6 @@ function buildInflateKit(data, pose, preset) {
   const frontIndex = [];
   const backIndex = [];
   const at = (x, y) => (x < 0 || y < 0 || x >= width || y >= height ? -1 : indexOf[y * width + x]);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const i = at(x, y);
-      if (i < 0) continue;
-      const neigh = [at(x + 1, y), at(x - 1, y), at(x, y + 1), at(x, y - 1)];
-      if (neigh.every((item) => item >= 0)) continue;
-      let sx = frontPos[i * 3] * 2;
-      let sy = frontPos[i * 3 + 1] * 2;
-      let n = 2;
-      for (const j of neigh) {
-        if (j < 0) continue;
-        sx += frontPos[j * 3];
-        sy += frontPos[j * 3 + 1];
-        n += 1;
-      }
-      const px = sx / n;
-      const py = sy / n;
-      frontPos[i * 3] = px;
-      frontPos[i * 3 + 1] = py;
-      backPos[i * 3] = px;
-      backPos[i * 3 + 1] = py;
-    }
-  }
   const addFront = (i, j, k) => {
     frontIndex.push(i, j, k);
     backIndex.push(i, k, j);
@@ -694,6 +924,36 @@ function buildInflateKit(data, pose, preset) {
     walk(frontIndex[i + 2], frontIndex[i]);
   }
 
+  const neigh = Array.from({ length: nFront }, () => []);
+  for (const key of open) {
+    const [i, j] = key.split(",").map(Number);
+    neigh[i].push(j);
+    neigh[j].push(i);
+  }
+  for (let pass = 0; pass < 7; pass += 1) {
+    const nextX = new Float32Array(nFront);
+    const nextY = new Float32Array(nFront);
+    for (let i = 0; i < nFront; i += 1) {
+      nextX[i] = frontPos[i * 3];
+      nextY[i] = frontPos[i * 3 + 1];
+      if (neigh[i].length < 2) continue;
+      let sx = 0;
+      let sy = 0;
+      for (const j of neigh[i]) {
+        sx += frontPos[j * 3];
+        sy += frontPos[j * 3 + 1];
+      }
+      nextX[i] = frontPos[i * 3] * 0.58 + (sx / neigh[i].length) * 0.42;
+      nextY[i] = frontPos[i * 3 + 1] * 0.58 + (sy / neigh[i].length) * 0.42;
+    }
+    for (let i = 0; i < nFront; i += 1) {
+      frontPos[i * 3] = nextX[i];
+      frontPos[i * 3 + 1] = nextY[i];
+      backPos[i * 3] = nextX[i];
+      backPos[i * 3 + 1] = nextY[i];
+    }
+  }
+
   const wallPos = [];
   const wallUv = [];
   const wallIndex = [];
@@ -729,7 +989,7 @@ function buildInflateKit(data, pose, preset) {
     front: makeGeometry(frontPos, frontUv, frontIndex),
     back: makeGeometry(backPos, backUv, backIndex),
     walls: makeGeometry(wallPos, wallUv, wallIndex),
-    color: averageOpaqueColor(rgba, mask, width, height),
+    color: deepColor(data.rgba, sdfHi, srcW, srcH, 1.8),
   };
 }
 
@@ -914,43 +1174,48 @@ function buildCassetteKit(data, pose, preset) {
 
 function buildBrakeKit(data, pose, preset) {
   const { mask, width, height } = data;
-  const aspect = pose.w / pose.h;
-  if (aspect < 0.78 || aspect > 1.28) return null;
-  const circle = fitCircle(mask, width, height);
+  const circle = fitRotorCircle(mask, width, height);
   if (!circle) return null;
-  if (circle.radius < Math.min(width, height) * 0.36) return null;
+  if (circle.radius < Math.min(width, height) * 0.22) return null;
   const sx = pose.w / width;
   const sy = pose.h / height;
   const ox = (circle.cx / width - 0.5) * pose.w;
   const oy = (0.5 - circle.cy / height) * pose.h;
-  const worldR = circle.radius * ((sx + sy) * 0.5) * 1.012;
-  const hole = worldR * 0.15;
-  const thick = Math.max(preset.maxHalf * 1.55, worldR * 0.038);
+  const worldR = circle.radius * ((sx + sy) * 0.5) * 1.004;
+  const hole = worldR * 0.118;
+  const trackInner = worldR * 0.76;
+  const thick = Math.max(0.0034, Math.min(preset.maxHalf * 0.7, worldR * 0.017));
   const rotorPoints = [
-    new THREE.Vector2(hole, -thick * 0.28),
-    new THREE.Vector2(hole + worldR * 0.1, -thick * 0.48),
-    new THREE.Vector2(worldR * 0.7, -thick * 0.42),
-    new THREE.Vector2(worldR, -thick * 0.18),
-    new THREE.Vector2(worldR, thick * 0.18),
-    new THREE.Vector2(worldR * 0.7, thick * 0.42),
-    new THREE.Vector2(hole + worldR * 0.1, thick * 0.48),
-    new THREE.Vector2(hole, thick * 0.28),
+    new THREE.Vector2(trackInner, -thick * 0.28),
+    new THREE.Vector2(trackInner + worldR * 0.03, -thick * 0.5),
+    new THREE.Vector2(worldR, -thick * 0.5),
+    new THREE.Vector2(worldR, thick * 0.5),
+    new THREE.Vector2(trackInner + worldR * 0.03, thick * 0.5),
+    new THREE.Vector2(trackInner, thick * 0.28),
   ];
-  const rotor = new THREE.LatheGeometry(rotorPoints, 64);
+  const rotor = new THREE.LatheGeometry(rotorPoints, 80);
   rotor.rotateX(Math.PI / 2);
   rotor.computeVertexNormals();
 
-  const face = new THREE.RingGeometry(hole, worldR, 72);
+  const face = new THREE.RingGeometry(hole, worldR * 1.002, 96);
   setRingUvs(face, circle.cx, circle.cy, width, height, sx, sy);
-  face.translate(0, 0, thick * 0.5);
+  face.translate(0, 0, thick * 0.52);
   const faceBack = face.clone();
-  faceBack.translate(0, 0, -thick);
+  faceBack.translate(0, 0, -thick * 1.04);
 
-  const hat = new THREE.CylinderGeometry(hole * 1.18, hole * 1.05, thick * 1.15, 24);
+  const hat = new THREE.CylinderGeometry(hole * 1.22, hole * 1.08, thick * 1.05, 28);
   hat.rotateX(Math.PI / 2);
   hat.computeVertexNormals();
 
-  return { rotor, face, faceBack, hat, origin: { x: ox, y: oy } };
+  return {
+    rotor,
+    face,
+    faceBack,
+    hat,
+    origin: { x: ox, y: oy },
+    caliperMask: extractCaliperMask(mask, width, height, circle),
+    thick,
+  };
 }
 
 function cacheKey(kind, src, pose, preset, extra = "") {
@@ -995,9 +1260,9 @@ function tag(object, pose, layer) {
   return object;
 }
 
-function makeSteerer(data, pose, preset) {
+function steererAnchor(data, pose) {
   const { mask, width, height } = data;
-  const xMax = Math.max(4, Math.floor(width * 0.4));
+  const xMax = Math.max(4, Math.floor(width * 0.45));
   let minY = height;
   let maxY = 0;
   for (let y = 0; y < height; y += 1) {
@@ -1008,25 +1273,22 @@ function makeSteerer(data, pose, preset) {
     }
   }
   if (maxY <= minY) return null;
-  const yCut = maxY - Math.max(2, Math.floor((maxY - minY) * 0.2));
-  let sx = 0;
-  let sy = 0;
-  let n = 0;
-  for (let y = yCut; y <= maxY; y += 1) {
-    for (let x = 0; x < xMax; x += 1) {
-      if (!mask[y * width + x]) continue;
-      sx += x + 0.5;
-      sy += y + 0.5;
-      n += 1;
-    }
-  }
-  if (n < 8) return null;
-  const x = (sx / n / width - 0.5) * pose.w;
-  const y = (0.5 - sy / n / height) * pose.h;
-  const radius = Math.max(pose.w * 0.055, 0.014);
-  const length = Math.max(pose.h * 0.48, 0.07);
-  const geo = new THREE.CylinderGeometry(radius, radius * 0.9, length, 18);
-  geo.translate(0, -length * 0.42, 0);
+  const yCut = maxY - Math.max(2, Math.floor((maxY - minY) * 0.22));
+  const axis = sliceAxis(mask, width, height, 0, xMax, yCut, maxY + 1);
+  const c = maskCentroid(mask, width, height, 0, yCut, xMax, maxY + 1);
+  if (!c) return null;
+  const local = maskToLocal(c.x, c.y, width, height, pose);
+  const tilt = axis ? Math.atan2(axis.dx * (pose.w / width), -axis.dy * (pose.h / height)) : 0;
+  return { ...local, tilt };
+}
+
+function makeSteerer(data, pose, preset) {
+  const anchor = steererAnchor(data, pose);
+  if (!anchor) return null;
+  const radius = Math.max(0.0075, Math.min(pose.w * 0.026, 0.011));
+  const length = Math.max(pose.h * 0.4, 0.06);
+  const geo = new THREE.CylinderGeometry(radius, radius * 0.88, length, 20);
+  geo.translate(0, -length * 0.46, 0);
   const mesh = new THREE.Mesh(
     geo,
     skin(preset, {
@@ -1036,7 +1298,8 @@ function makeSteerer(data, pose, preset) {
       envMapIntensity: 0.2,
     }),
   );
-  mesh.position.set(x, y, 0);
+  mesh.position.set(anchor.x, anchor.y, 0);
+  mesh.rotation.z = anchor.tilt;
   return mesh;
 }
 
@@ -1065,24 +1328,32 @@ function pegSkin(preset, color) {
   });
 }
 
-function makePostPeg(data, pose, preset, color) {
+function postAnchor(data, pose) {
   const { mask, width, height } = data;
   let maxY = 0;
   for (let i = 0; i < mask.length; i += 1) {
     if (!mask[i]) continue;
     maxY = Math.max(maxY, Math.floor(i / width));
   }
-  const y0 = Math.max(0, maxY - Math.max(3, Math.floor(height * 0.16)));
-  const anchor = maskCentroid(mask, width, height, 0, y0, width, maxY + 1);
+  const y0 = Math.max(0, maxY - Math.max(4, Math.floor(height * 0.2)));
+  const axis = sliceAxis(mask, width, height, 0, width, y0, maxY + 1);
+  const c = maskCentroid(mask, width, height, 0, y0, width, maxY + 1);
+  if (!c) return null;
+  const local = maskToLocal(c.x, c.y, width, height, pose);
+  const tilt = axis ? Math.atan2(axis.dx * (pose.w / width), -axis.dy * (pose.h / height)) : 0;
+  return { ...local, tilt };
+}
+
+function makePostPeg(data, pose, preset, color) {
+  const anchor = postAnchor(data, pose);
   if (!anchor) return null;
-  const x = (anchor.x / width - 0.5) * pose.w;
-  const y = (0.5 - anchor.y / height) * pose.h;
-  const radius = Math.max(pose.w * 0.042, 0.01);
-  const length = Math.max(pose.h * 0.22, 0.05);
-  const geo = new THREE.CylinderGeometry(radius, radius * 0.88, length, 16);
-  geo.translate(0, -length * 0.42, 0);
+  const radius = Math.max(0.0068, Math.min(pose.w * 0.022, 0.01));
+  const length = Math.max(pose.h * 0.3, 0.062);
+  const geo = new THREE.CylinderGeometry(radius, radius * 0.86, length, 18);
+  geo.translate(0, -length * 0.46, 0);
   const mesh = new THREE.Mesh(geo, pegSkin(preset, color ?? AXLE_COLOR));
-  mesh.position.set(x, y, 0);
+  mesh.position.set(anchor.x, anchor.y, 0);
+  mesh.rotation.z = anchor.tilt;
   return mesh;
 }
 
@@ -1102,10 +1373,36 @@ function makeMountPeg(data, pose, preset, color) {
   return mesh;
 }
 
+function addInflateParts(group, kit, texture, preset, wallOnlyColor = false) {
+  const faceMat = skin(preset, {
+    map: texture,
+    emissiveMap: texture,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.16,
+    side: THREE.FrontSide,
+    transparent: false,
+    depthWrite: true,
+    alphaTest: 0,
+    metalness: Math.min(preset.metalness, 0.04),
+    envMapIntensity: 0.16,
+    specularIntensity: 0.14,
+  });
+  const wallMat = skin(preset, {
+    color: kit.color.clone().multiplyScalar(0.86),
+    roughness: Math.min(0.8, preset.roughness + 0.24),
+    metalness: Math.min(preset.metalness, 0.02),
+    envMapIntensity: 0.07,
+    specularIntensity: 0.06,
+  });
+  if (kit.front) group.add(new THREE.Mesh(kit.front.clone(), wallOnlyColor ? wallMat.clone() : faceMat));
+  if (kit.back) group.add(new THREE.Mesh(kit.back.clone(), wallOnlyColor ? wallMat.clone() : faceMat.clone()));
+  if (kit.walls) group.add(new THREE.Mesh(kit.walls.clone(), wallMat));
+}
+
 function inflateMesh(texture, src, pose, preset, layer) {
   const data = maskCache.get(src);
   if (!data) return null;
-  const key = cacheKey("inflate", src, pose, preset);
+  const key = cacheKey("inflate", src, pose, preset, String(meshLimit(pose)));
   let kit = geomCache.get(key);
   if (!kit) {
     kit = buildInflateKit(data, pose, preset);
@@ -1113,39 +1410,15 @@ function inflateMesh(texture, src, pose, preset, layer) {
     geomCache.set(key, kit);
   }
   const group = new THREE.Group();
-  const front = new THREE.Mesh(
-    kit.front.clone(),
-    skin(preset, {
-      map: texture,
-      emissiveMap: texture,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.28,
-      side: THREE.FrontSide,
-      transparent: false,
-      depthWrite: true,
-      alphaTest: 0,
-      metalness: Math.min(preset.metalness, 0.04),
-      envMapIntensity: 0.18,
-      specularIntensity: 0.16,
-    }),
-  );
-  const backMat = skin(preset, {
-    map: texture,
-    emissiveMap: texture,
-    emissive: 0xffffff,
-    emissiveIntensity: 0.26,
-    side: THREE.FrontSide,
-    transparent: false,
-    depthWrite: true,
-    alphaTest: 0,
-    metalness: Math.min(preset.metalness, 0.04),
-    roughness: preset.roughness,
-    envMapIntensity: 0.16,
-    specularIntensity: 0.14,
-  });
-  group.add(front);
-  if (kit.back) group.add(new THREE.Mesh(kit.back.clone(), backMat));
-  if (kit.walls) group.add(new THREE.Mesh(kit.walls.clone(), backMat.clone()));
+  addInflateParts(group, kit, texture, preset);
+  if (layer.role === "interior") {
+    group.traverse((node) => {
+      if (!node.material) return;
+      node.material.polygonOffset = true;
+      node.material.polygonOffsetFactor = 1;
+      node.material.polygonOffsetUnits = 1;
+    });
+  }
   if (layer.role === "handlebar") {
     const steerer = makeSteerer(data, pose, preset);
     if (steerer) group.add(steerer);
@@ -1318,37 +1591,47 @@ function brakeMesh(texture, src, pose, preset, layer) {
     kit.rotor.clone(),
     skin(preset, {
       color: ROTOR_COLOR,
-      roughness: 0.32,
-      metalness: 0.55,
-      envMapIntensity: 0.3,
+      roughness: 0.28,
+      metalness: 0.62,
+      envMapIntensity: 0.32,
     }),
   );
   const hat = new THREE.Mesh(
     kit.hat.clone(),
     skin(preset, {
       color: AXLE_COLOR,
-      roughness: 0.38,
-      metalness: 0.36,
-      envMapIntensity: 0.24,
+      roughness: 0.36,
+      metalness: 0.4,
+      envMapIntensity: 0.22,
     }),
   );
-  const face = new THREE.Mesh(
-    kit.face.clone(),
-    photoSkin(texture, preset, { metalness: 0.16, roughness: 0.4, alphaTest: 0.22, transparent: false }),
-  );
-  const faceBack = new THREE.Mesh(
-    kit.faceBack.clone(),
-    skin(preset, {
-      color: ROTOR_COLOR,
-      roughness: 0.34,
-      metalness: 0.5,
-      envMapIntensity: 0.24,
-    }),
-  );
+  const rotorPhoto = photoSkin(texture, preset, {
+    metalness: 0.2,
+    roughness: 0.38,
+    alphaTest: 0.12,
+    transparent: true,
+    emissiveIntensity: 0.3,
+  });
+  const face = new THREE.Mesh(kit.face.clone(), rotorPhoto);
+  const faceBack = new THREE.Mesh(kit.faceBack.clone(), rotorPhoto.clone());
   for (const mesh of [rotor, hat, faceBack, face]) {
     mesh.position.set(kit.origin.x, kit.origin.y, 0);
     mesh.renderOrder = layer.z;
     group.add(mesh);
+  }
+  if (kit.caliperMask) {
+    const calKey = cacheKey("inflate", src, pose, preset, "caliper");
+    let calKit = geomCache.get(calKey);
+    if (!calKit) {
+      calKit = buildInflateKit(
+        data,
+        pose,
+        { ...preset, maxHalf: Math.min(preset.maxHalf, 0.015), zScale: 0.94 },
+        kit.caliperMask,
+      );
+      if (calKit) geomCache.set(calKey, calKit);
+    }
+    if (calKit) addInflateParts(group, calKit, texture, preset);
   }
   return tag(group, pose, layer);
 }
@@ -1383,11 +1666,32 @@ export function warmupVolume(src, pose, type, role) {
       return;
     }
   }
-  const key = cacheKey("inflate", src, pose, preset);
+  const key = cacheKey("inflate", src, pose, preset, String(meshLimit(pose)));
   if (!geomCache.has(key)) {
     const kit = buildInflateKit(data, pose, preset);
     if (kit) geomCache.set(key, kit);
   }
+}
+
+export function partAnchor(src, pose, role) {
+  const data = maskCache.get(src);
+  if (!data) return null;
+  if (role === "handlebar") return steererAnchor(data, pose);
+  if (role === "saddle") return postAnchor(data, pose);
+  return { x: 0, y: 0, tilt: 0 };
+}
+
+export function frameSockets(src, pose) {
+  const data = maskCache.get(src);
+  if (!data) return null;
+  const { mask, width, height } = data;
+  const head = topCentroid(mask, width, height, width * 0.7, 0, width, height * 0.45);
+  const seat = topCentroid(mask, width, height, width * 0.16, 0, width * 0.52, height * 0.4);
+  if (!head || !seat) return null;
+  return {
+    head: maskToLocal(head.x, head.y, width, height, pose),
+    seat: maskToLocal(seat.x, seat.y, width, height, pose),
+  };
 }
 
 export function createVolumeMesh({ texture, src, pose, type, role, layer }) {
@@ -1422,5 +1726,7 @@ export const __test = {
   buildCassetteKit,
   buildAxleGeometry,
   buildBrakeKit,
+  fitRotorCircle,
+  extractCaliperMask,
   presetOf,
 };

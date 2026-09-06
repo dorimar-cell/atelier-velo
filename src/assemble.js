@@ -1,14 +1,26 @@
 import * as THREE from "three";
 import { createVolumeMesh, disposePartMesh, prepareSolid, warmupVolume } from "./solid.js";
 
+const FRAME_PLANE = 20 * 0.0024;
+
 const JOIN = {
-  saddle: { x: 0.006, y: -0.04, z: -0.008 },
-  handlebar: { x: -0.022, y: -0.016, z: -0.012 },
-  shifter: { x: -0.01, y: -0.008, z: -0.006 },
-  seat: { x: 0.008, y: 0.004, z: -0.018 },
-  down: { x: -0.008, y: 0.008, z: -0.018 },
+  saddle: { x: 0, y: -0.016, z: 0 },
+  handlebar: { x: 0, y: -0.006, z: 0 },
+  shifter: { x: -0.002, y: 0.002, z: 0.006 },
+  seat: { x: 0.002, y: 0.002, z: -0.002 },
+  down: { x: -0.002, y: 0.002, z: 0 },
   drivetrain: { x: 0.004, y: 0.01, z: -0.006 },
   cassette: { x: 0, y: 0, z: -0.012 },
+};
+
+const MIDPLANE = {
+  frame: FRAME_PLANE,
+  interior: FRAME_PLANE - 0.09,
+  handlebar: FRAME_PLANE,
+  saddle: FRAME_PLANE,
+  shifter: FRAME_PLANE + 0.006,
+  seat: FRAME_PLANE + 0.006,
+  down: FRAME_PLANE + 0.005,
 };
 
 const FROM = {
@@ -60,7 +72,7 @@ function loadTexture(loader, src) {
       src,
       (texture) => {
         texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 8;
+        texture.anisotropy = 16;
         resolve(texture);
       },
       undefined,
@@ -112,14 +124,26 @@ export function createAssembler(catalog) {
 
   function worldOf(layer) {
     const pose = bboxToWorld(layer.bbox, catalog.canvas, worldH);
-    pose.z = layer.z * 0.0024;
+    pose.z = MIDPLANE[layer.role] ?? layer.z * 0.0024;
     const join = JOIN[layer.role];
     if (join) {
       pose.x += join.x;
       pose.y += join.y;
-      pose.z += join.z;
+      pose.z += join.z ?? 0;
     }
     return pose;
+  }
+
+  function alignMesh(mesh) {
+    const pose = mesh.userData.pose;
+    const role = mesh.userData.layer?.role;
+    if (!pose || !role) return;
+    if (role === "handlebar" || role === "saddle") {
+      pose.z = FRAME_PLANE;
+    }
+    if (role === "shifter") {
+      pose.z = FRAME_PLANE + 0.006;
+    }
   }
 
   function makeMesh(layer, type) {
@@ -214,6 +238,7 @@ export function createAssembler(catalog) {
 
     option.layers.forEach((layer, index) => {
       const mesh = makeMesh(layer, option.type);
+      alignMesh(mesh);
       const pose = mesh.userData.pose;
       if (instant) {
         mesh.visible = true;

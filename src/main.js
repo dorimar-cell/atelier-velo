@@ -200,11 +200,22 @@ window.__atelier = {
       if (node.userData?.volume) volumes += 1;
       if (node.isMesh) meshes += 1;
     });
+    const poses = [];
+    bike.root.traverse((node) => {
+      if (!node.userData?.layer || !node.userData?.pose) return;
+      poses.push({
+        role: node.userData.layer.role,
+        x: Number(node.userData.pose.x.toFixed(4)),
+        y: Number(node.userData.pose.y.toFixed(4)),
+        z: Number(node.userData.pose.z.toFixed(4)),
+      });
+    });
     return {
       complete: bike.selected.size >= catalog.types.length,
       selected: [...bike.selected.values()],
       volumes,
       meshes,
+      poses,
     };
   },
   setView(yaw, pitch, zoom) {
