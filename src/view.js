@@ -113,6 +113,15 @@ export function createObjectView(canvas, camera) {
     current.zoom = 1;
   }
 
+  function set(yaw = 0, pitch = 0, zoom = 1) {
+    desired.yaw = yaw;
+    desired.pitch = clamp(pitch, MIN_PITCH, MAX_PITCH);
+    desired.zoom = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    current.yaw = desired.yaw;
+    current.pitch = desired.pitch;
+    current.zoom = desired.zoom;
+  }
+
   function update(dt) {
     const k = 1 - Math.exp(-12 * dt);
     current.yaw += (desired.yaw - current.yaw) * k;
@@ -133,5 +142,5 @@ export function createObjectView(canvas, camera) {
     }
   }
 
-  return { update, apply, reset };
+  return { update, apply, reset, set };
 }

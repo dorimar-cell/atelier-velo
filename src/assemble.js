@@ -1,6 +1,16 @@
 import * as THREE from "three";
 import { createVolumeMesh, disposePartMesh, prepareSolid, warmupVolume } from "./solid.js";
 
+const JOIN = {
+  saddle: { x: 0.006, y: -0.04, z: -0.008 },
+  handlebar: { x: -0.022, y: -0.016, z: -0.012 },
+  shifter: { x: -0.01, y: -0.008, z: -0.006 },
+  seat: { x: 0.008, y: 0.004, z: -0.018 },
+  down: { x: -0.008, y: 0.008, z: -0.018 },
+  drivetrain: { x: 0.004, y: 0.01, z: -0.006 },
+  cassette: { x: 0, y: 0, z: -0.012 },
+};
+
 const FROM = {
   frame: [-3.4, 0.55, 0.8],
   interior: [-3.1, 0.25, 0.6],
@@ -103,6 +113,12 @@ export function createAssembler(catalog) {
   function worldOf(layer) {
     const pose = bboxToWorld(layer.bbox, catalog.canvas, worldH);
     pose.z = layer.z * 0.0024;
+    const join = JOIN[layer.role];
+    if (join) {
+      pose.x += join.x;
+      pose.y += join.y;
+      pose.z += join.z;
+    }
     return pose;
   }
 

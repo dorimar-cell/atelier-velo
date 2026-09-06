@@ -2,21 +2,24 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const PREP_MAX = 256;
-const MESH_MAX = 220;
+const MESH_MAX = 300;
+const AXLE_COLOR = "#2b2b2d";
+const STEEL_COLOR = "#9a9894";
+const ROTOR_COLOR = "#8d8d90";
 
 const TYPE_PRESET = {
   frame: { maxHalf: 0.09, zScale: 1.12, roughness: 0.52, metalness: 0.02, clearcoat: 0.05 },
   wheels: { maxHalf: 0.07, zScale: 1, roughness: 0.54, metalness: 0.04, clearcoat: 0.04 },
-  handlebar: { maxHalf: 0.042, zScale: 1.18, roughness: 0.56, metalness: 0.03, clearcoat: 0.04 },
+  handlebar: { maxHalf: 0.048, zScale: 1.22, roughness: 0.56, metalness: 0.03, clearcoat: 0.04 },
   saddle: { maxHalf: 0.072, zScale: 1.7, roughness: 0.68, metalness: 0.02, clearcoat: 0.02 },
   groupset: { maxHalf: 0.05, zScale: 1.08, roughness: 0.44, metalness: 0.16, clearcoat: 0.04 },
   cassette: { maxHalf: 0.07, zScale: 1, roughness: 0.38, metalness: 0.22, clearcoat: 0.03 },
-  brakes: { maxHalf: 0.016, zScale: 0.85, roughness: 0.46, metalness: 0.12, clearcoat: 0.03 },
+  brakes: { maxHalf: 0.022, zScale: 0.9, roughness: 0.46, metalness: 0.12, clearcoat: 0.03 },
   bottles: { maxHalf: 0.036, zScale: 1.42, roughness: 0.55, metalness: 0.04, clearcoat: 0.03 },
 };
 
 const ROLE_PRESET = {
-  interior: { maxHalf: 0.016, zScale: 0.52, roughness: 0.58, metalness: 0.08, clearcoat: 0.02 },
+  interior: { maxHalf: 0.022, zScale: 0.58, roughness: 0.58, metalness: 0.08, clearcoat: 0.02 },
 };
 
 const maskCache = new Map();
@@ -216,29 +219,121 @@ function boxBlur(src, width, height) {
   return out;
 }
 
-function dilate(mask, width, height) {
+function sampleRgba(rgba, width, height, px, py) {
+  const x = Math.min(width - 1, Math.max(0, Math.round(px)));
+  const y = Math.min(height - 1, Math.max(0, Math.round(py)));
+  const i = (y * width + x) * 4;
+  return [rgba[i] / 255, rgba[i + 1] / 255, rgba[i + 2] / 255, rgba[i + 3] / 255];
+}
+
+function fillSmallHoles(mask, width, height) {
   const out = new Uint8Array(mask);
+  const seen = new Uint8Array(mask.length);
+  const maxArea = Math.max(28, Math.floor(width * height * 0.012));
+  const qx = new Int32Array(mask.length);
+  const qy = new Int32Array(mask.length);
+
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      if (!mask[y * width + x]) continue;
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          const xx = x + dx;
-          const yy = y + dy;
-          if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
-          out[yy * width + xx] = 1;
+      const start = y * width + x;
+      if (out[start] || seen[start]) continue;
+      let head = 0;
+      let tail = 0;
+      qx[tail] = x;
+      qy[tail] = y;
+      tail += 1;
+      seen[start] = 1;
+      let area = 0;
+      let border = false;
+      const cells = [];
+      while (head < tail) {
+        const cx = qx[head];
+        const cy = qy[head];
+        head += 1;
+        const i = cy * width + cx;
+        cells.push(i);
+        area += 1;
+        if (cx === 0 || cy === 0 || cx === width - 1 || cy === height - 1) border = true;
+        const next = [
+          [cx + 1, cy],
+          [cx - 1, cy],
+          [cx, cy + 1],
+          [cx, cy - 1],
+        ];
+        for (const [nx, ny] of next) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (out[ni] || seen[ni]) continue;
+          seen[ni] = 1;
+          qx[tail] = nx;
+          qy[tail] = ny;
+          tail += 1;
         }
+      }
+      if (!border && area <= maxArea) {
+        for (const i of cells) out[i] = 1;
       }
     }
   }
   return out;
 }
 
-function sampleRgba(rgba, width, height, px, py) {
-  const x = Math.min(width - 1, Math.max(0, Math.round(px)));
-  const y = Math.min(height - 1, Math.max(0, Math.round(py)));
-  const i = (y * width + x) * 4;
-  return [rgba[i] / 255, rgba[i + 1] / 255, rgba[i + 2] / 255, rgba[i + 3] / 255];
+function averageOpaqueColor(rgba, mask, width, height) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let i = 0; i < mask.length; i += 1) {
+    if (!mask[i]) continue;
+    const p = i * 4;
+    if (rgba[p + 3] < 24) continue;
+    r += rgba[p];
+    g += rgba[p + 1];
+    b += rgba[p + 2];
+    n += 1;
+  }
+  if (!n) return new THREE.Color("#7a7a7a");
+  return new THREE.Color(r / n / 255, g / n / 255, b / n / 255);
+}
+
+function bandAverage(rgba, mask, width, height, cx, cy, r0, r1, maxLum = 256) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = y * width + x;
+      if (!mask[i]) continue;
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+      if (d < r0 || d >= r1) continue;
+      const p = i * 4;
+      if (rgba[p + 3] < 24) continue;
+      if ((rgba[p] + rgba[p + 1] + rgba[p + 2]) / 3 > maxLum) continue;
+      r += rgba[p];
+      g += rgba[p + 1];
+      b += rgba[p + 2];
+      n += 1;
+    }
+  }
+  if (!n) return [0.12, 0.12, 0.13];
+  return [r / n / 255, g / n / 255, b / n / 255];
+}
+
+function nearestOpaqueUv(mask, width, height, x, y) {
+  if (mask[y * width + x]) return [(x + 0.5) / width, 1 - (y + 0.5) / height];
+  for (let radius = 1; radius <= 7; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        const xx = x + dx;
+        const yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+        if (!mask[yy * width + xx]) continue;
+        return [(xx + 0.5) / width, 1 - (yy + 0.5) / height];
+      }
+    }
+  }
+  return [(x + 0.5) / width, 1 - (y + 0.5) / height];
 }
 
 function fitCircle(mask, width, height) {
@@ -352,7 +447,8 @@ function detectWheelBands(stats) {
     tireOuter: outer / bins,
     tireInner: Math.max(0.8, tireInner / bins),
     rimInner: Math.max(0.62, Math.min(0.8, rimInner / bins)),
-    hubOuter: Math.max(0.07, Math.min(0.16, hub / bins)),
+    hubOuter: Math.max(0.045, Math.min(0.1, hub / bins)),
+    hasTan: tanScore > 10,
   };
 }
 
@@ -360,9 +456,10 @@ function projectUv(x, y, cx, cy, width, height, sx, sy) {
   return [(cx + x / sx) / width, 1 - (cy - y / sy) / height];
 }
 
-function paintGeomFromImage(geometry, rgba, width, height, cx, cy, sx, sy, origin) {
+function paintGeomWithFallback(geometry, rgba, width, height, cx, cy, sx, sy, origin, fallback) {
   const pos = geometry.getAttribute("position");
   const colors = new Float32Array(pos.count * 3);
+  const [fr, fg, fb] = fallback;
   for (let i = 0; i < pos.count; i += 1) {
     const [r, g, b, a] = sampleRgba(
       rgba,
@@ -371,10 +468,40 @@ function paintGeomFromImage(geometry, rgba, width, height, cx, cy, sx, sy, origi
       cx + (pos.getX(i) - origin.x) / sx,
       cy - (pos.getY(i) - origin.y) / sy,
     );
-    const shade = a > 0.12 ? 1 : 0.35;
-    colors[i * 3] = r * shade;
-    colors[i * 3 + 1] = g * shade;
-    colors[i * 3 + 2] = b * shade;
+    const useSample = a > 0.14;
+    colors[i * 3] = useSample ? r : fr;
+    colors[i * 3 + 1] = useSample ? g : fg;
+    colors[i * 3 + 2] = useSample ? b : fb;
+  }
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+}
+
+function paintTire(geometry, rgba, width, height, cx, cy, sx, sy, major, tube, tireColor, tanColor, hasTan) {
+  const pos = geometry.getAttribute("position");
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i += 1) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const radial = Math.hypot(x, y);
+    const [r, g, b, a] = sampleRgba(rgba, width, height, cx + x / sx, cy - y / sy);
+    let cr;
+    let cg;
+    let cb;
+    if (hasTan && (Math.abs(z) > tube * 0.22 || (radial > major * 0.98 && radial < major + tube * 0.72))) {
+      [cr, cg, cb] = a > 0.18 ? [r, g, b] : tanColor;
+    } else if (radial > major && a <= 0.14) {
+      [cr, cg, cb] = tireColor;
+    } else if (a > 0.14) {
+      cr = r;
+      cg = g;
+      cb = b;
+    } else {
+      [cr, cg, cb] = hasTan ? tanColor : tireColor;
+    }
+    colors[i * 3] = cr;
+    colors[i * 3 + 1] = cg;
+    colors[i * 3 + 2] = cb;
   }
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 }
@@ -402,20 +529,30 @@ function skin(preset, extra = {}) {
   });
 }
 
-function buildInflateGeometry(data, pose, preset) {
+function makeGeometry(positions, uvs, indices) {
+  if (indices.length < 3) return null;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  if (uvs) geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function buildInflateKit(data, pose, preset) {
   const grid = shrinkForMesh(data, MESH_MAX);
-  const { mask, width, height } = grid;
+  const filled = fillSmallHoles(grid.mask, grid.width, grid.height);
+  const { rgba, width, height } = grid;
+  const mask = filled;
   const dt = boxBlur(distanceTransform(mask, width, height), width, height);
   const localR = maxFilter(dt, width, height, 2);
-  const solid = dilate(mask, width, height);
+  const solid = mask;
   const sx = pose.w / width;
   const sy = pose.h / height;
   const sz = ((sx + sy) * 0.5) * (preset.zScale ?? 1);
+  const minHalf = Math.max(0.0048, preset.maxHalf * 0.2);
   const indexOf = new Int32Array(width * height).fill(-1);
   const heights = new Float32Array(width * height);
-  const positions = [];
-  const uvs = [];
-  const coords = [];
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -424,7 +561,7 @@ function buildInflateGeometry(data, pose, preset) {
       const d = dt[i];
       const radius = Math.max(d, localR[i]);
       let z = Math.sqrt(Math.max(0, d * (2 * radius - d))) * sz;
-      if (mask[i]) z = Math.max(z, 0.0016);
+      z = Math.max(z, minHalf);
       heights[i] = Math.min(z, preset.maxHalf);
     }
   }
@@ -448,7 +585,7 @@ function buildInflateGeometry(data, pose, preset) {
           sum += heights[j];
           n += 1;
         }
-        next[i] = Math.min(preset.maxHalf, sum / n);
+        next[i] = Math.min(preset.maxHalf, Math.max(minHalf, sum / n));
       }
     }
     heights.set(next);
@@ -458,69 +595,209 @@ function buildInflateGeometry(data, pose, preset) {
     for (let x = 0; x < width; x += 1) {
       const i = y * width + x;
       if (!solid[i]) continue;
-      indexOf[i] = positions.length / 3;
-      coords.push(x, y);
-      positions.push((x + 0.5) * sx - pose.w * 0.5, pose.h * 0.5 - (y + 0.5) * sy, heights[i]);
-      uvs.push((x + 0.5) / width, 1 - (y + 0.5) / height);
+      const edge =
+        x === 0 ||
+        y === 0 ||
+        x === width - 1 ||
+        y === height - 1 ||
+        !solid[i - 1] ||
+        !solid[i + 1] ||
+        !solid[i - width] ||
+        !solid[i + width];
+      if (edge) heights[i] = Math.min(heights[i], Math.max(0.007, minHalf * 0.42));
     }
   }
 
-  const nFront = positions.length / 3;
-  if (nFront < 8) return null;
-  for (let i = 0; i < nFront; i += 1) {
-    positions.push(positions[i * 3], positions[i * 3 + 1], -positions[i * 3 + 2]);
-    uvs.push(uvs[i * 2], uvs[i * 2 + 1]);
+  const frontPos = [];
+  const frontUv = [];
+  const backPos = [];
+  const backUv = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = y * width + x;
+      if (!solid[i]) continue;
+      indexOf[i] = frontPos.length / 3;
+      const px = (x + 0.5) * sx - pose.w * 0.5;
+      const py = pose.h * 0.5 - (y + 0.5) * sy;
+      const pz = heights[i];
+      frontPos.push(px, py, pz);
+      backPos.push(px, py, -pz);
+      const [u, v] = nearestOpaqueUv(mask, width, height, x, y);
+      frontUv.push(u, v);
+      backUv.push(u, v);
+    }
   }
 
-  const indices = [];
-  const at = (x, y) => indexOf[y * width + x];
+  const nFront = frontPos.length / 3;
+  if (nFront < 8) return null;
+
+  const frontIndex = [];
+  const backIndex = [];
+  const at = (x, y) => (x < 0 || y < 0 || x >= width || y >= height ? -1 : indexOf[y * width + x]);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = at(x, y);
+      if (i < 0) continue;
+      const neigh = [at(x + 1, y), at(x - 1, y), at(x, y + 1), at(x, y - 1)];
+      if (neigh.every((item) => item >= 0)) continue;
+      let sx = frontPos[i * 3] * 2;
+      let sy = frontPos[i * 3 + 1] * 2;
+      let n = 2;
+      for (const j of neigh) {
+        if (j < 0) continue;
+        sx += frontPos[j * 3];
+        sy += frontPos[j * 3 + 1];
+        n += 1;
+      }
+      const px = sx / n;
+      const py = sy / n;
+      frontPos[i * 3] = px;
+      frontPos[i * 3 + 1] = py;
+      backPos[i * 3] = px;
+      backPos[i * 3 + 1] = py;
+    }
+  }
+  const addFront = (i, j, k) => {
+    frontIndex.push(i, j, k);
+    backIndex.push(i, k, j);
+  };
+
   for (let y = 0; y < height - 1; y += 1) {
     for (let x = 0; x < width - 1; x += 1) {
       const a = at(x, y);
       const b = at(x + 1, y);
       const c = at(x + 1, y + 1);
       const d = at(x, y + 1);
-      if (a < 0 || b < 0 || c < 0 || d < 0) continue;
-      indices.push(d, c, b, d, b, a);
-      indices.push(d + nFront, b + nFront, c + nFront, d + nFront, a + nFront, b + nFront);
+      if (a >= 0 && b >= 0 && c >= 0 && d >= 0) {
+        addFront(d, c, b);
+        addFront(d, b, a);
+        continue;
+      }
+      if (d >= 0 && c >= 0 && b >= 0) addFront(d, c, b);
+      else if (d >= 0 && b >= 0 && a >= 0) addFront(d, b, a);
+      else if (a >= 0 && b >= 0 && c >= 0) addFront(a, b, c);
+      else if (a >= 0 && c >= 0 && d >= 0) addFront(a, c, d);
     }
   }
-  if (indices.length < 12) return null;
+  if (frontIndex.length < 12) return null;
 
-  const heightAt = (x, y) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) return 0;
-    return solid[y * width + x] ? heights[y * width + x] : 0;
+  const open = new Set();
+  const flip = (i, j) => `${j},${i}`;
+  const walk = (i, j) => {
+    const rev = flip(i, j);
+    if (open.has(rev)) open.delete(rev);
+    else open.add(`${i},${j}`);
   };
-  const normals = new Float32Array((nFront * 2) * 3);
-  for (let i = 0; i < nFront; i += 1) {
-    const x = coords[i * 2];
-    const y = coords[i * 2 + 1];
-    const dzwx = (heightAt(x + 1, y) - heightAt(x - 1, y)) / (2 * sx);
-    const dzwy = (heightAt(x, y - 1) - heightAt(x, y + 1)) / (2 * sy);
-    let nx = -dzwx;
-    let ny = -dzwy;
-    let nz = 1;
-    const len = Math.hypot(nx, ny, nz) || 1;
-    nx /= len;
-    ny /= len;
-    nz /= len;
-    normals[i * 3] = nx;
-    normals[i * 3 + 1] = ny;
-    normals[i * 3 + 2] = nz;
-    normals[(i + nFront) * 3] = nx;
-    normals[(i + nFront) * 3 + 1] = ny;
-    normals[(i + nFront) * 3 + 2] = -nz;
+  for (let i = 0; i < frontIndex.length; i += 3) {
+    walk(frontIndex[i], frontIndex[i + 1]);
+    walk(frontIndex[i + 1], frontIndex[i + 2]);
+    walk(frontIndex[i + 2], frontIndex[i]);
   }
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
-  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  return geometry;
+  const wallPos = [];
+  const wallUv = [];
+  const wallIndex = [];
+  for (const key of open) {
+    const [i, j] = key.split(",").map(Number);
+    const zi = Math.abs(frontPos[i * 3 + 2]);
+    const zj = Math.abs(frontPos[j * 3 + 2]);
+    if (zi <= 0.0075 && zj <= 0.0075) continue;
+    const base = wallPos.length / 3;
+    wallPos.push(
+      frontPos[i * 3],
+      frontPos[i * 3 + 1],
+      frontPos[i * 3 + 2],
+      backPos[i * 3],
+      backPos[i * 3 + 1],
+      backPos[i * 3 + 2],
+      backPos[j * 3],
+      backPos[j * 3 + 1],
+      backPos[j * 3 + 2],
+      frontPos[j * 3],
+      frontPos[j * 3 + 1],
+      frontPos[j * 3 + 2],
+    );
+    const u0 = frontUv[i * 2];
+    const v0 = frontUv[i * 2 + 1];
+    const u1 = frontUv[j * 2];
+    const v1 = frontUv[j * 2 + 1];
+    wallUv.push(u0, v0, u0, v0, u1, v1, u1, v1);
+    wallIndex.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+
+  return {
+    front: makeGeometry(frontPos, frontUv, frontIndex),
+    back: makeGeometry(backPos, backUv, backIndex),
+    walls: makeGeometry(wallPos, wallUv, wallIndex),
+    color: averageOpaqueColor(rgba, mask, width, height),
+  };
 }
 
-function buildWheelKit(data, pose) {
+function mergeParts(pieces) {
+  const stack = mergeGeometries(pieces, false);
+  pieces.forEach((piece) => piece.dispose());
+  if (stack) stack.computeVertexNormals();
+  return stack;
+}
+
+function buildAxleGeometry(worldR, rimHalf, role) {
+  const rear = role === "rear";
+  const shellR = worldR * 0.052;
+  const flangeR = worldR * 0.074;
+  const axleR = worldR * 0.019;
+  const capR = worldR * 0.028;
+  const shellHalf = Math.max(worldR * (rear ? 0.088 : 0.068), rimHalf * 1.05);
+  const axleHalf = worldR * (rear ? 0.198 : 0.15);
+  const body = [];
+  const caps = [];
+
+  const shell = new THREE.CylinderGeometry(shellR, shellR, shellHalf * 2, 28);
+  shell.rotateX(Math.PI / 2);
+  body.push(shell);
+
+  for (const z of [-shellHalf * 0.76, shellHalf * 0.76]) {
+    const flange = new THREE.CylinderGeometry(flangeR, flangeR * 0.9, Math.max(worldR * 0.011, 0.0055), 28);
+    flange.rotateX(Math.PI / 2);
+    flange.translate(0, 0, z);
+    body.push(flange);
+  }
+
+  if (rear) {
+    const freehub = new THREE.CylinderGeometry(shellR * 0.84, shellR * 0.8, worldR * 0.068, 24);
+    freehub.rotateX(Math.PI / 2);
+    freehub.translate(0, 0, shellHalf * 0.62 + worldR * 0.028);
+    body.push(freehub);
+  }
+
+  const shaft = new THREE.CylinderGeometry(axleR, axleR, axleHalf * 2, 20);
+  shaft.rotateX(Math.PI / 2);
+
+  for (const sign of [-1, 1]) {
+    const z = sign * axleHalf;
+    const washer = new THREE.CylinderGeometry(capR * 1.18, capR * 1.08, worldR * 0.007, 24);
+    washer.rotateX(Math.PI / 2);
+    washer.translate(0, 0, z - sign * worldR * 0.012);
+    caps.push(washer);
+    const cap = new THREE.CylinderGeometry(capR, capR * 0.94, worldR * 0.015, 12);
+    cap.rotateX(Math.PI / 2);
+    cap.translate(0, 0, z);
+    caps.push(cap);
+    const hex = new THREE.CylinderGeometry(capR * 0.46, capR * 0.4, worldR * 0.01, 6);
+    hex.rotateX(Math.PI / 2);
+    hex.translate(0, 0, z + sign * worldR * 0.007);
+    caps.push(hex);
+  }
+
+  return {
+    hub: mergeParts(body),
+    shaft,
+    caps: mergeParts(caps),
+    spokeInner: Math.max(flangeR * 1.15, worldR * 0.095),
+    axleHalf,
+  };
+}
+
+function buildWheelKit(data, pose, role) {
   const { mask, rgba, width, height } = data;
   const circle = fitCircle(mask, width, height);
   if (!circle) return null;
@@ -533,15 +810,29 @@ function buildWheelKit(data, pose) {
   const tireOuter = worldR * bands.tireOuter;
   const tireInner = worldR * bands.tireInner;
   const rimInner = worldR * bands.rimInner;
-  const hubR = worldR * bands.hubOuter;
   const tube = Math.max((tireOuter - tireInner) * 0.62, worldR * 0.052);
   const major = (tireOuter + tireInner) * 0.5;
   const rimOuter = tireInner * 0.99;
   const rimDepth = Math.max(rimOuter - rimInner, worldR * 0.08);
   const rimHalf = Math.max(rimDepth * 0.46, worldR * 0.034);
+  const axle = buildAxleGeometry(worldR, rimHalf, role);
+  if (!axle.hub) return null;
+  const tireColor = bandAverage(rgba, mask, width, height, circle.cx, circle.cy, circle.radius * 0.86, circle.radius * 1.02);
+  const tanColor = bandAverage(rgba, mask, width, height, circle.cx, circle.cy, circle.radius * 0.88, circle.radius * 0.97);
+  const rimColor = bandAverage(
+    rgba,
+    mask,
+    width,
+    height,
+    circle.cx,
+    circle.cy,
+    circle.radius * bands.rimInner,
+    circle.radius * bands.tireInner * 0.96,
+    118,
+  );
 
   const tire = new THREE.TorusGeometry(major, tube, 14, 64);
-  paintGeomFromImage(tire, rgba, width, height, circle.cx, circle.cy, sx, sy, { x: 0, y: 0 });
+  paintTire(tire, rgba, width, height, circle.cx, circle.cy, sx, sy, major, tube, tireColor, tanColor, bands.hasTan);
   tire.computeVertexNormals();
 
   const rimPoints = [
@@ -554,21 +845,33 @@ function buildWheelKit(data, pose) {
   ];
   const rim = new THREE.LatheGeometry(rimPoints, 56);
   rim.rotateX(Math.PI / 2);
-  paintGeomFromImage(rim, rgba, width, height, circle.cx, circle.cy, sx, sy, { x: 0, y: 0 });
+  paintGeomWithFallback(rim, rgba, width, height, circle.cx, circle.cy, sx, sy, { x: 0, y: 0 }, rimColor);
   rim.computeVertexNormals();
 
   const rimFace = new THREE.RingGeometry(rimInner, rimOuter, 72);
   setRingUvs(rimFace, circle.cx, circle.cy, width, height, sx, sy);
   rimFace.translate(0, 0, rimHalf * 0.9);
+  const rimFaceBack = rimFace.clone();
+  rimFaceBack.translate(0, 0, -rimHalf * 1.8);
 
-  const spokes = new THREE.CircleGeometry(rimInner * 0.985, 64);
+  const spokes = new THREE.RingGeometry(axle.spokeInner, rimInner * 0.985, 64);
   setRingUvs(spokes, circle.cx, circle.cy, width, height, sx, sy);
+  const spokesBack = spokes.clone();
+  spokesBack.translate(0, 0, -0.003);
 
-  const hub = new THREE.CylinderGeometry(hubR, hubR * 0.92, rimHalf * 2.15, 28);
-  hub.rotateX(Math.PI / 2);
-  paintGeomFromImage(hub, rgba, width, height, circle.cx, circle.cy, sx, sy, { x: 0, y: 0 });
-
-  return { tire, rim, rimFace, spokes, hub, origin: { x: ox, y: oy } };
+  return {
+    tire,
+    rim,
+    rimFace,
+    rimFaceBack,
+    spokes,
+    spokesBack,
+    hub: axle.hub,
+    shaft: axle.shaft,
+    caps: axle.caps,
+    origin: { x: ox, y: oy },
+    rimColor,
+  };
 }
 
 function buildCassetteKit(data, pose, preset) {
@@ -580,31 +883,78 @@ function buildCassetteKit(data, pose, preset) {
   const ox = (circle.cx / width - 0.5) * pose.w;
   const oy = (0.5 - circle.cy / height) * pose.h;
   const worldR = circle.radius * ((sx + sy) * 0.5);
-  const hole = worldR * 0.14;
+  const hole = worldR * 0.15;
   const count = 11;
-  const depth = preset.maxHalf * 2;
+  const depth = Math.min(preset.maxHalf * 1.85, worldR * 0.7);
   const pieces = [];
+  const barrel = new THREE.CylinderGeometry(worldR * 0.17, worldR * 0.165, depth * 0.86, 24);
+  barrel.rotateX(Math.PI / 2);
+  pieces.push(barrel);
   for (let i = 0; i < count; i += 1) {
     const t = i / (count - 1);
-    const radius = THREE.MathUtils.lerp(worldR, worldR * 0.34, t);
-    const geo = new THREE.CylinderGeometry(radius, radius * 0.98, depth / count, 48);
+    const radius = THREE.MathUtils.lerp(worldR * 0.98, worldR * 0.36, t);
+    const thick = Math.max(depth * 0.036, 0.0032);
+    const geo = new THREE.CylinderGeometry(radius, radius * 0.985, thick, 48);
     geo.rotateX(Math.PI / 2);
-    geo.translate(0, 0, -preset.maxHalf + (i + 0.5) * (depth / count));
+    geo.translate(0, 0, -depth * 0.4 + i * ((depth * 0.8) / (count - 1)));
     pieces.push(geo);
   }
-  const stack = mergeGeometries(pieces, false);
-  pieces.forEach((piece) => piece.dispose());
+  const lock = new THREE.CylinderGeometry(worldR * 0.27, worldR * 0.25, depth * 0.05, 28);
+  lock.rotateX(Math.PI / 2);
+  lock.translate(0, 0, depth * 0.44);
+  pieces.push(lock);
+  const stack = mergeParts(pieces);
   if (!stack) return null;
-  stack.computeVertexNormals();
 
   const face = new THREE.RingGeometry(hole, worldR, 72);
   setRingUvs(face, circle.cx, circle.cy, width, height, sx, sy);
-  face.translate(0, 0, preset.maxHalf * 0.92);
+  face.translate(0, 0, depth * 0.46);
   return { stack, face, origin: { x: ox, y: oy } };
 }
 
-function cacheKey(kind, src, pose, preset) {
-  return `${kind}:${src}:${pose.w.toFixed(4)}:${pose.h.toFixed(4)}:${preset.maxHalf}:${preset.zScale ?? 1}`;
+function buildBrakeKit(data, pose, preset) {
+  const { mask, width, height } = data;
+  const aspect = pose.w / pose.h;
+  if (aspect < 0.78 || aspect > 1.28) return null;
+  const circle = fitCircle(mask, width, height);
+  if (!circle) return null;
+  if (circle.radius < Math.min(width, height) * 0.36) return null;
+  const sx = pose.w / width;
+  const sy = pose.h / height;
+  const ox = (circle.cx / width - 0.5) * pose.w;
+  const oy = (0.5 - circle.cy / height) * pose.h;
+  const worldR = circle.radius * ((sx + sy) * 0.5) * 1.012;
+  const hole = worldR * 0.15;
+  const thick = Math.max(preset.maxHalf * 1.55, worldR * 0.038);
+  const rotorPoints = [
+    new THREE.Vector2(hole, -thick * 0.28),
+    new THREE.Vector2(hole + worldR * 0.1, -thick * 0.48),
+    new THREE.Vector2(worldR * 0.7, -thick * 0.42),
+    new THREE.Vector2(worldR, -thick * 0.18),
+    new THREE.Vector2(worldR, thick * 0.18),
+    new THREE.Vector2(worldR * 0.7, thick * 0.42),
+    new THREE.Vector2(hole + worldR * 0.1, thick * 0.48),
+    new THREE.Vector2(hole, thick * 0.28),
+  ];
+  const rotor = new THREE.LatheGeometry(rotorPoints, 64);
+  rotor.rotateX(Math.PI / 2);
+  rotor.computeVertexNormals();
+
+  const face = new THREE.RingGeometry(hole, worldR, 72);
+  setRingUvs(face, circle.cx, circle.cy, width, height, sx, sy);
+  face.translate(0, 0, thick * 0.5);
+  const faceBack = face.clone();
+  faceBack.translate(0, 0, -thick);
+
+  const hat = new THREE.CylinderGeometry(hole * 1.18, hole * 1.05, thick * 1.15, 24);
+  hat.rotateX(Math.PI / 2);
+  hat.computeVertexNormals();
+
+  return { rotor, face, faceBack, hat, origin: { x: ox, y: oy } };
+}
+
+function cacheKey(kind, src, pose, preset, extra = "") {
+  return `${kind}:${src}:${pose.w.toFixed(4)}:${pose.h.toFixed(4)}:${preset.maxHalf}:${preset.zScale ?? 1}:${extra}`;
 }
 
 export function prepareSolid(src, texture) {
@@ -645,42 +995,197 @@ function tag(object, pose, layer) {
   return object;
 }
 
+function makeSteerer(data, pose, preset) {
+  const { mask, width, height } = data;
+  const xMax = Math.max(4, Math.floor(width * 0.4));
+  let minY = height;
+  let maxY = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < xMax; x += 1) {
+      if (!mask[y * width + x]) continue;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxY <= minY) return null;
+  const yCut = maxY - Math.max(2, Math.floor((maxY - minY) * 0.2));
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let y = yCut; y <= maxY; y += 1) {
+    for (let x = 0; x < xMax; x += 1) {
+      if (!mask[y * width + x]) continue;
+      sx += x + 0.5;
+      sy += y + 0.5;
+      n += 1;
+    }
+  }
+  if (n < 8) return null;
+  const x = (sx / n / width - 0.5) * pose.w;
+  const y = (0.5 - sy / n / height) * pose.h;
+  const radius = Math.max(pose.w * 0.055, 0.014);
+  const length = Math.max(pose.h * 0.48, 0.07);
+  const geo = new THREE.CylinderGeometry(radius, radius * 0.9, length, 18);
+  geo.translate(0, -length * 0.42, 0);
+  const mesh = new THREE.Mesh(
+    geo,
+    skin(preset, {
+      color: AXLE_COLOR,
+      roughness: 0.44,
+      metalness: 0.22,
+      envMapIntensity: 0.2,
+    }),
+  );
+  mesh.position.set(x, y, 0);
+  return mesh;
+}
+
+function maskCentroid(mask, width, height, x0, y0, x1, y1) {
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      if (!mask[y * width + x]) continue;
+      sx += x + 0.5;
+      sy += y + 0.5;
+      n += 1;
+    }
+  }
+  if (n < 6) return null;
+  return { x: sx / n, y: sy / n, n };
+}
+
+function pegSkin(preset, color) {
+  return skin(preset, {
+    color,
+    roughness: 0.5,
+    metalness: 0.08,
+    envMapIntensity: 0.14,
+  });
+}
+
+function makePostPeg(data, pose, preset, color) {
+  const { mask, width, height } = data;
+  let maxY = 0;
+  for (let i = 0; i < mask.length; i += 1) {
+    if (!mask[i]) continue;
+    maxY = Math.max(maxY, Math.floor(i / width));
+  }
+  const y0 = Math.max(0, maxY - Math.max(3, Math.floor(height * 0.16)));
+  const anchor = maskCentroid(mask, width, height, 0, y0, width, maxY + 1);
+  if (!anchor) return null;
+  const x = (anchor.x / width - 0.5) * pose.w;
+  const y = (0.5 - anchor.y / height) * pose.h;
+  const radius = Math.max(pose.w * 0.042, 0.01);
+  const length = Math.max(pose.h * 0.22, 0.05);
+  const geo = new THREE.CylinderGeometry(radius, radius * 0.88, length, 16);
+  geo.translate(0, -length * 0.42, 0);
+  const mesh = new THREE.Mesh(geo, pegSkin(preset, color ?? AXLE_COLOR));
+  mesh.position.set(x, y, 0);
+  return mesh;
+}
+
+function makeMountPeg(data, pose, preset, color) {
+  const { mask, width, height } = data;
+  const anchor = maskCentroid(mask, width, height, 0, 0, width, height);
+  if (!anchor) return null;
+  const x = (anchor.x / width - 0.5) * pose.w;
+  const y = (0.5 - anchor.y / height) * pose.h;
+  const radius = Math.max(0.0055, Math.min(pose.w, pose.h) * 0.07);
+  const length = Math.max(0.028, Math.min(pose.w, pose.h) * 0.28);
+  const geo = new THREE.CylinderGeometry(radius, radius * 0.9, length, 12);
+  geo.rotateX(Math.PI / 2);
+  geo.translate(0, 0, -length * 0.38);
+  const mesh = new THREE.Mesh(geo, pegSkin(preset, color ?? AXLE_COLOR));
+  mesh.position.set(x, y, 0);
+  return mesh;
+}
+
 function inflateMesh(texture, src, pose, preset, layer) {
   const data = maskCache.get(src);
   if (!data) return null;
   const key = cacheKey("inflate", src, pose, preset);
-  let geometry = geomCache.get(key);
-  if (!geometry) {
-    geometry = buildInflateGeometry(data, pose, preset);
-    if (!geometry) return null;
-    geomCache.set(key, geometry);
+  let kit = geomCache.get(key);
+  if (!kit) {
+    kit = buildInflateKit(data, pose, preset);
+    if (!kit) return null;
+    geomCache.set(key, kit);
   }
-  const mesh = new THREE.Mesh(
-    geometry.clone(),
+  const group = new THREE.Group();
+  const front = new THREE.Mesh(
+    kit.front.clone(),
     skin(preset, {
       map: texture,
       emissiveMap: texture,
       emissive: 0xffffff,
-      emissiveIntensity: 0.52,
+      emissiveIntensity: 0.28,
       side: THREE.FrontSide,
       transparent: false,
       depthWrite: true,
-      alphaTest: 0.08,
-      metalness: 0.02,
+      alphaTest: 0,
+      metalness: Math.min(preset.metalness, 0.04),
       envMapIntensity: 0.18,
       specularIntensity: 0.16,
     }),
   );
-  return tag(mesh, pose, layer);
+  const backMat = skin(preset, {
+    map: texture,
+    emissiveMap: texture,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.26,
+    side: THREE.FrontSide,
+    transparent: false,
+    depthWrite: true,
+    alphaTest: 0,
+    metalness: Math.min(preset.metalness, 0.04),
+    roughness: preset.roughness,
+    envMapIntensity: 0.16,
+    specularIntensity: 0.14,
+  });
+  group.add(front);
+  if (kit.back) group.add(new THREE.Mesh(kit.back.clone(), backMat));
+  if (kit.walls) group.add(new THREE.Mesh(kit.walls.clone(), backMat.clone()));
+  if (layer.role === "handlebar") {
+    const steerer = makeSteerer(data, pose, preset);
+    if (steerer) group.add(steerer);
+  }
+  if (layer.role === "saddle") {
+    const peg = makePostPeg(data, pose, preset, kit.color);
+    if (peg) group.add(peg);
+  }
+  if (layer.role === "seat" || layer.role === "down") {
+    const peg = makeMountPeg(data, pose, preset, kit.color);
+    if (peg) group.add(peg);
+  }
+  return tag(group, pose, layer);
+}
+
+function photoSkin(texture, preset, extra = {}) {
+  return skin(preset, {
+    map: texture,
+    emissiveMap: texture,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.44,
+    transparent: true,
+    alphaTest: 0.1,
+    side: THREE.DoubleSide,
+    depthWrite: true,
+    metalness: 0.02,
+    roughness: 0.54,
+    envMapIntensity: 0.14,
+    specularIntensity: 0.12,
+    ...extra,
+  });
 }
 
 function wheelMesh(texture, src, pose, preset, layer) {
   const data = maskCache.get(src);
   if (!data) return null;
-  const key = cacheKey("wheel", src, pose, preset);
+  const key = cacheKey("wheel", src, pose, preset, layer.role);
   let kit = geomCache.get(key);
   if (!kit) {
-    kit = buildWheelKit(data, pose);
+    kit = buildWheelKit(data, pose, layer.role);
     if (!kit) return null;
     geomCache.set(key, kit);
   }
@@ -690,7 +1195,7 @@ function wheelMesh(texture, src, pose, preset, layer) {
     kit.tire.clone(),
     skin(preset, {
       vertexColors: true,
-      color: "#2b2927",
+      color: "#ffffff",
       roughness: 0.7,
       metalness: 0.02,
       clearcoat: 0.02,
@@ -701,58 +1206,51 @@ function wheelMesh(texture, src, pose, preset, layer) {
     kit.rim.clone(),
     skin(preset, {
       vertexColors: true,
-      color: "#1c1c1e",
+      color: "#ffffff",
       roughness: 0.48,
       metalness: 0.08,
       clearcoat: 0.06,
       envMapIntensity: 0.2,
     }),
   );
-  const rimFace = new THREE.Mesh(
-    kit.rimFace.clone(),
-    skin(preset, {
-      map: texture,
-      emissiveMap: texture,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.48,
-      transparent: true,
-      alphaTest: 0.1,
-      side: THREE.DoubleSide,
-      depthWrite: true,
-      metalness: 0,
-      roughness: 0.52,
-      envMapIntensity: 0.14,
-      specularIntensity: 0.12,
-    }),
+  const rimFace = new THREE.Mesh(kit.rimFace.clone(), photoSkin(texture, preset, { metalness: 0, roughness: 0.52 }));
+  const rimFaceBack = new THREE.Mesh(
+    kit.rimFaceBack.clone(),
+    photoSkin(texture, preset, { metalness: 0, roughness: 0.52, emissiveIntensity: 0.4 }),
   );
-  const spokes = new THREE.Mesh(
-    kit.spokes.clone(),
-    skin(preset, {
-      map: texture,
-      emissiveMap: texture,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.48,
-      transparent: true,
-      alphaTest: 0.12,
-      side: THREE.DoubleSide,
-      depthWrite: true,
-      roughness: 0.58,
-      metalness: 0.02,
-      envMapIntensity: 0.14,
-      specularIntensity: 0.12,
-    }),
+  const spokes = new THREE.Mesh(kit.spokes.clone(), photoSkin(texture, preset, { alphaTest: 0.12, roughness: 0.58 }));
+  const spokesBack = new THREE.Mesh(
+    kit.spokesBack.clone(),
+    photoSkin(texture, preset, { alphaTest: 0.12, roughness: 0.58, emissiveIntensity: 0.4 }),
   );
   const hub = new THREE.Mesh(
     kit.hub.clone(),
     skin(preset, {
-      vertexColors: true,
-      color: "#2a2a2c",
-      roughness: 0.42,
-      metalness: 0.18,
-      envMapIntensity: 0.22,
+      color: AXLE_COLOR,
+      roughness: 0.36,
+      metalness: 0.4,
+      envMapIntensity: 0.28,
     }),
   );
-  for (const mesh of [tire, rim, rimFace, spokes, hub]) {
+  const shaft = new THREE.Mesh(
+    kit.shaft.clone(),
+    skin(preset, {
+      color: "#5a5a5e",
+      roughness: 0.28,
+      metalness: 0.58,
+      envMapIntensity: 0.32,
+    }),
+  );
+  const caps = new THREE.Mesh(
+    kit.caps.clone(),
+    skin(preset, {
+      color: "#3a3a3d",
+      roughness: 0.32,
+      metalness: 0.5,
+      envMapIntensity: 0.3,
+    }),
+  );
+  for (const mesh of [tire, rim, rimFaceBack, spokesBack, rimFace, spokes, hub, shaft, caps]) {
     mesh.position.set(x, y, 0);
     mesh.renderOrder = layer.z;
     group.add(mesh);
@@ -774,10 +1272,10 @@ function cassetteMesh(texture, src, pose, preset, layer) {
   const stack = new THREE.Mesh(
     kit.stack.clone(),
     skin(preset, {
-      color: "#8d8c89",
-      roughness: 0.36,
-      metalness: 0.42,
-      envMapIntensity: 0.28,
+      color: STEEL_COLOR,
+      roughness: 0.34,
+      metalness: 0.46,
+      envMapIntensity: 0.3,
     }),
   );
   const face = new THREE.Mesh(
@@ -805,14 +1303,64 @@ function cassetteMesh(texture, src, pose, preset, layer) {
   return tag(group, pose, layer);
 }
 
+function brakeMesh(texture, src, pose, preset, layer) {
+  const data = maskCache.get(src);
+  if (!data) return null;
+  const key = cacheKey("brake", src, pose, preset);
+  let kit = geomCache.get(key);
+  if (kit === undefined) {
+    kit = buildBrakeKit(data, pose, preset);
+    geomCache.set(key, kit);
+  }
+  if (!kit) return null;
+  const group = new THREE.Group();
+  const rotor = new THREE.Mesh(
+    kit.rotor.clone(),
+    skin(preset, {
+      color: ROTOR_COLOR,
+      roughness: 0.32,
+      metalness: 0.55,
+      envMapIntensity: 0.3,
+    }),
+  );
+  const hat = new THREE.Mesh(
+    kit.hat.clone(),
+    skin(preset, {
+      color: AXLE_COLOR,
+      roughness: 0.38,
+      metalness: 0.36,
+      envMapIntensity: 0.24,
+    }),
+  );
+  const face = new THREE.Mesh(
+    kit.face.clone(),
+    photoSkin(texture, preset, { metalness: 0.16, roughness: 0.4, alphaTest: 0.22, transparent: false }),
+  );
+  const faceBack = new THREE.Mesh(
+    kit.faceBack.clone(),
+    skin(preset, {
+      color: ROTOR_COLOR,
+      roughness: 0.34,
+      metalness: 0.5,
+      envMapIntensity: 0.24,
+    }),
+  );
+  for (const mesh of [rotor, hat, faceBack, face]) {
+    mesh.position.set(kit.origin.x, kit.origin.y, 0);
+    mesh.renderOrder = layer.z;
+    group.add(mesh);
+  }
+  return tag(group, pose, layer);
+}
+
 export function warmupVolume(src, pose, type, role) {
   const preset = presetOf(type, role);
   const data = maskCache.get(src);
   if (!data) return;
   if (type === "wheels") {
-    const key = cacheKey("wheel", src, pose, preset);
+    const key = cacheKey("wheel", src, pose, preset, role);
     if (!geomCache.has(key)) {
-      const kit = buildWheelKit(data, pose);
+      const kit = buildWheelKit(data, pose, role);
       if (kit) geomCache.set(key, kit);
     }
     return;
@@ -825,10 +1373,20 @@ export function warmupVolume(src, pose, type, role) {
     }
     return;
   }
+  if (type === "brakes") {
+    const key = cacheKey("brake", src, pose, preset);
+    if (!geomCache.has(key)) {
+      const kit = buildBrakeKit(data, pose, preset);
+      geomCache.set(key, kit);
+      if (kit) return;
+    } else if (geomCache.get(key)) {
+      return;
+    }
+  }
   const key = cacheKey("inflate", src, pose, preset);
   if (!geomCache.has(key)) {
-    const geometry = buildInflateGeometry(data, pose, preset);
-    if (geometry) geomCache.set(key, geometry);
+    const kit = buildInflateKit(data, pose, preset);
+    if (kit) geomCache.set(key, kit);
   }
 }
 
@@ -837,6 +1395,13 @@ export function createVolumeMesh({ texture, src, pose, type, role, layer }) {
   prepareSolid(src, texture);
   if (type === "wheels") return wheelMesh(texture, src, pose, preset, layer) ?? planeFallback(texture, pose, preset, layer);
   if (type === "cassette") return cassetteMesh(texture, src, pose, preset, layer) ?? planeFallback(texture, pose, preset, layer);
+  if (type === "brakes") {
+    return (
+      brakeMesh(texture, src, pose, preset, layer) ??
+      inflateMesh(texture, src, pose, preset, layer) ??
+      planeFallback(texture, pose, preset, layer)
+    );
+  }
   return inflateMesh(texture, src, pose, preset, layer) ?? planeFallback(texture, pose, preset, layer);
 }
 
@@ -846,3 +1411,16 @@ export function disposePartMesh(mesh) {
     if (node.material && !Array.isArray(node.material)) node.material.dispose();
   });
 }
+
+export const __test = {
+  fillSmallHoles,
+  averageOpaqueColor,
+  bandAverage,
+  detectWheelBands,
+  buildInflateKit,
+  buildWheelKit,
+  buildCassetteKit,
+  buildAxleGeometry,
+  buildBrakeKit,
+  presetOf,
+};

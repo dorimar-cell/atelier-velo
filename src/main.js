@@ -192,6 +192,26 @@ syncChrome();
 resize();
 renderer.setAnimationLoop(frame);
 
+window.__atelier = {
+  debugState() {
+    let volumes = 0;
+    let meshes = 0;
+    bike.root.traverse((node) => {
+      if (node.userData?.volume) volumes += 1;
+      if (node.isMesh) meshes += 1;
+    });
+    return {
+      complete: bike.selected.size >= catalog.types.length,
+      selected: [...bike.selected.values()],
+      volumes,
+      meshes,
+    };
+  },
+  setView(yaw, pitch, zoom) {
+    view.set(yaw, pitch, zoom);
+  },
+};
+
 const params = new URLSearchParams(location.search);
 const preset = params.get("pick");
 const instant = params.has("snap");
