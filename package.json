@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "parts": "python scripts/process_parts.py"
+    "parts": "python scripts/process_parts.py",
+    "test": "node --test src/flame-wrap.test.mjs",
+    "test:flame": "node scripts/verify-flame.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

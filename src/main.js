@@ -197,6 +197,10 @@ syncChrome();
 resize();
 renderer.setAnimationLoop(frame);
 
+window.__atelier = {
+  debugState: () => bike.debugState(),
+};
+
 const params = new URLSearchParams(location.search);
 const preset = params.get("pick");
 const instant = params.has("snap");

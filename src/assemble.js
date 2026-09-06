@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createShadowFlame } from "./flame-wrap.js";
 
 const FROM = {
   frame: [-3.4, 0.55, 0.8],
@@ -70,6 +71,7 @@ export function createAssembler(catalog) {
   const selected = new Map();
   const groups = new Map();
   const gens = new Map();
+  let shadowFlame = null;
 
   function textureOf(src) {
     if (textures.has(src)) return Promise.resolve(textures.get(src));
@@ -199,18 +201,28 @@ export function createAssembler(catalog) {
   }
 
   function placeShadow() {
-    if (!catalog.shadow || groups.has("shadow")) return;
-    const option = catalog.shadow;
-    const group = new THREE.Group();
-    group.userData.type = "shadow";
-    root.add(group);
-    groups.set("shadow", group);
-    for (const layer of option.layers) {
-      const mesh = makeMesh(layer);
-      mesh.material.opacity = 0;
-      mesh.material.alphaTest = 0;
-      mesh.userData.fade = 0;
-      group.add(mesh);
+    if (!catalog.shadow) return;
+    if (!groups.has("shadow")) {
+      const option = catalog.shadow;
+      const group = new THREE.Group();
+      group.userData.type = "shadow";
+      root.add(group);
+      groups.set("shadow", group);
+      for (const layer of option.layers) {
+        const mesh = makeMesh(layer);
+        mesh.material.opacity = 0;
+        mesh.material.alphaTest = 0;
+        mesh.userData.fade = 0;
+        group.add(mesh);
+      }
+    }
+    if (!shadowFlame) {
+      const layer = catalog.shadow.layers[0];
+      const texture = textures.get(layer.src);
+      if (texture) {
+        shadowFlame = createShadowFlame(worldOf(layer), texture);
+        root.add(shadowFlame.group);
+      }
     }
   }
 
@@ -232,6 +244,7 @@ export function createAssembler(catalog) {
       gens.set(type, (gens.get(type) ?? 0) + 1);
       clearType(type);
     }
+    shadowFlame?.setActive(false);
   }
 
   function tick(dt, time) {
@@ -263,11 +276,18 @@ export function createAssembler(catalog) {
       }
     }
 
+    const complete = selected.size >= catalog.types.length;
+    const finale = complete && flights.length === 0;
+    shadowFlame?.setActive(finale);
+    const flameReveal = shadowFlame?.tick(dt, time) ?? 0;
+
     const shadowGroup = groups.get("shadow");
     if (shadowGroup) {
       for (const mesh of shadowGroup.children) {
         mesh.userData.fade = Math.min((mesh.userData.fade ?? 0) + dt * 1.4, 1);
-        mesh.material.opacity = mesh.userData.fade * 0.55;
+        mesh.material.opacity =
+          mesh.userData.fade * THREE.MathUtils.lerp(0.55, 0.4, flameReveal);
+        mesh.visible = mesh.material.opacity > 0.01;
       }
     }
 
@@ -282,7 +302,21 @@ export function createAssembler(catalog) {
     return {
       flights: flights.length,
       selected,
+      complete,
+      flameReveal,
+    };
+  }
+
+  function debugState() {
+    const shadow = groups.get("shadow")?.children[0];
+    return {
       complete: selected.size >= catalog.types.length,
+      flights: flights.length,
+      flameReveal: shadowFlame?.getReveal() ?? 0,
+      flameLocal: shadowFlame?.localPose() ?? null,
+      flameVisible: Boolean(shadowFlame?.group.visible),
+      shadowOpacity: shadow?.material.opacity ?? 0,
+      hasDomOverlay: Boolean(document.querySelector(".flame-layer")),
     };
   }
 
@@ -312,6 +346,7 @@ export function createAssembler(catalog) {
     preload,
     reset,
     tick,
+    debugState,
     projectHint,
     optionById(id) {
       return catalog.options.find((item) => item.id === id) ?? null;
