@@ -20,8 +20,8 @@ const renderer = new THREE.WebGLRenderer({
   alpha: false,
   powerPreference: "high-performance",
 });
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.18;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.02;
 renderer.setClearColor(0xd5cfc2, 1);
 
 const scene = new THREE.Scene();
@@ -29,17 +29,12 @@ const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 80);
 
 applyStudioEnvironment(renderer, scene);
 
-const key = new THREE.DirectionalLight(0xfff4e2, 1.15);
-key.position.set(2.4, 3.8, 4.2);
+const hemi = new THREE.HemisphereLight(0xf4f4f3, 0xc5c3bf, 0.4);
+scene.add(hemi);
+
+const key = new THREE.DirectionalLight(0xf4f4f4, 0.1);
+key.position.set(1.4, 4.4, 3.6);
 scene.add(key);
-
-const fill = new THREE.DirectionalLight(0xf3efe6, 0.55);
-fill.position.set(-2.6, 2.2, 2.4);
-scene.add(fill);
-
-const rim = new THREE.DirectionalLight(0xffffff, 0.35);
-rim.position.set(-1.2, 4.2, -3.2);
-scene.add(rim);
 
 const FINALE = {
   kicker: "Готово",

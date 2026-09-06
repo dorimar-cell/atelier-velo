@@ -5,18 +5,18 @@ const PREP_MAX = 256;
 const MESH_MAX = 220;
 
 const TYPE_PRESET = {
-  frame: { maxHalf: 0.09, zScale: 1.12, roughness: 0.36, metalness: 0.06, clearcoat: 0.18 },
-  wheels: { maxHalf: 0.07, zScale: 1, roughness: 0.4, metalness: 0.22, clearcoat: 0.16 },
-  handlebar: { maxHalf: 0.042, zScale: 1.18, roughness: 0.34, metalness: 0.18, clearcoat: 0.22 },
-  saddle: { maxHalf: 0.072, zScale: 1.7, roughness: 0.66, metalness: 0.04, clearcoat: 0.04 },
-  groupset: { maxHalf: 0.05, zScale: 1.08, roughness: 0.26, metalness: 0.74, clearcoat: 0.1 },
-  cassette: { maxHalf: 0.07, zScale: 1, roughness: 0.2, metalness: 0.86, clearcoat: 0.08 },
-  brakes: { maxHalf: 0.016, zScale: 0.85, roughness: 0.32, metalness: 0.62, clearcoat: 0.08 },
-  bottles: { maxHalf: 0.036, zScale: 1.42, roughness: 0.42, metalness: 0.28, clearcoat: 0.06 },
+  frame: { maxHalf: 0.09, zScale: 1.12, roughness: 0.52, metalness: 0.02, clearcoat: 0.05 },
+  wheels: { maxHalf: 0.07, zScale: 1, roughness: 0.54, metalness: 0.04, clearcoat: 0.04 },
+  handlebar: { maxHalf: 0.042, zScale: 1.18, roughness: 0.56, metalness: 0.03, clearcoat: 0.04 },
+  saddle: { maxHalf: 0.072, zScale: 1.7, roughness: 0.68, metalness: 0.02, clearcoat: 0.02 },
+  groupset: { maxHalf: 0.05, zScale: 1.08, roughness: 0.44, metalness: 0.16, clearcoat: 0.04 },
+  cassette: { maxHalf: 0.07, zScale: 1, roughness: 0.38, metalness: 0.22, clearcoat: 0.03 },
+  brakes: { maxHalf: 0.016, zScale: 0.85, roughness: 0.46, metalness: 0.12, clearcoat: 0.03 },
+  bottles: { maxHalf: 0.036, zScale: 1.42, roughness: 0.55, metalness: 0.04, clearcoat: 0.03 },
 };
 
 const ROLE_PRESET = {
-  interior: { maxHalf: 0.016, zScale: 0.52, roughness: 0.48, metalness: 0.28, clearcoat: 0.04 },
+  interior: { maxHalf: 0.016, zScale: 0.52, roughness: 0.58, metalness: 0.08, clearcoat: 0.02 },
 };
 
 const maskCache = new Map();
@@ -395,8 +395,9 @@ function skin(preset, extra = {}) {
     roughness: preset.roughness,
     metalness: preset.metalness,
     clearcoat: preset.clearcoat,
-    clearcoatRoughness: 0.34,
-    envMapIntensity: 0.92,
+    clearcoatRoughness: 0.55,
+    envMapIntensity: 0.26,
+    specularIntensity: 0.28,
     ...extra,
   });
 }
@@ -619,6 +620,9 @@ function planeFallback(texture, pose, preset, layer) {
     new THREE.PlaneGeometry(pose.w, pose.h),
     skin(preset, {
       map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.48,
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -655,11 +659,16 @@ function inflateMesh(texture, src, pose, preset, layer) {
     geometry.clone(),
     skin(preset, {
       map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.52,
       side: THREE.FrontSide,
       transparent: false,
       depthWrite: true,
       alphaTest: 0.08,
-      envMapIntensity: 0.78,
+      metalness: 0.02,
+      envMapIntensity: 0.18,
+      specularIntensity: 0.16,
     }),
   );
   return tag(mesh, pose, layer);
@@ -682,10 +691,10 @@ function wheelMesh(texture, src, pose, preset, layer) {
     skin(preset, {
       vertexColors: true,
       color: "#2b2927",
-      roughness: 0.64,
-      metalness: 0.04,
-      clearcoat: 0.05,
-      envMapIntensity: 0.38,
+      roughness: 0.7,
+      metalness: 0.02,
+      clearcoat: 0.02,
+      envMapIntensity: 0.16,
     }),
   );
   const rim = new THREE.Mesh(
@@ -693,32 +702,44 @@ function wheelMesh(texture, src, pose, preset, layer) {
     skin(preset, {
       vertexColors: true,
       color: "#1c1c1e",
-      roughness: 0.4,
-      metalness: 0.16,
-      clearcoat: 0.2,
-      envMapIntensity: 0.48,
+      roughness: 0.48,
+      metalness: 0.08,
+      clearcoat: 0.06,
+      envMapIntensity: 0.2,
     }),
   );
   const rimFace = new THREE.Mesh(
     kit.rimFace.clone(),
     skin(preset, {
       map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.48,
       transparent: true,
       alphaTest: 0.1,
       side: THREE.DoubleSide,
       depthWrite: true,
+      metalness: 0,
+      roughness: 0.52,
+      envMapIntensity: 0.14,
+      specularIntensity: 0.12,
     }),
   );
   const spokes = new THREE.Mesh(
     kit.spokes.clone(),
     skin(preset, {
       map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.48,
       transparent: true,
       alphaTest: 0.12,
       side: THREE.DoubleSide,
       depthWrite: true,
-      roughness: 0.45,
-      metalness: 0.18,
+      roughness: 0.58,
+      metalness: 0.02,
+      envMapIntensity: 0.14,
+      specularIntensity: 0.12,
     }),
   );
   const hub = new THREE.Mesh(
@@ -726,9 +747,9 @@ function wheelMesh(texture, src, pose, preset, layer) {
     skin(preset, {
       vertexColors: true,
       color: "#2a2a2c",
-      roughness: 0.34,
-      metalness: 0.42,
-      envMapIntensity: 0.5,
+      roughness: 0.42,
+      metalness: 0.18,
+      envMapIntensity: 0.22,
     }),
   );
   for (const mesh of [tire, rim, rimFace, spokes, hub]) {
@@ -753,19 +774,27 @@ function cassetteMesh(texture, src, pose, preset, layer) {
   const stack = new THREE.Mesh(
     kit.stack.clone(),
     skin(preset, {
-      color: "#c5c4c1",
-      roughness: 0.22,
-      metalness: 0.88,
+      color: "#8d8c89",
+      roughness: 0.36,
+      metalness: 0.42,
+      envMapIntensity: 0.28,
     }),
   );
   const face = new THREE.Mesh(
     kit.face.clone(),
     skin(preset, {
       map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.48,
       transparent: true,
       alphaTest: 0.1,
       side: THREE.DoubleSide,
       depthWrite: true,
+      metalness: 0.08,
+      roughness: 0.46,
+      envMapIntensity: 0.16,
+      specularIntensity: 0.14,
     }),
   );
   stack.position.set(kit.origin.x, kit.origin.y, 0);
