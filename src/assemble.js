@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createVolumeMesh, disposePartMesh, prepareSolid } from "./solid.js";
+import { createVolumeMesh, disposePartMesh, prepareSolid, warmupVolume } from "./solid.js";
 
 const FROM = {
   frame: [-3.4, 0.55, 0.8],
@@ -92,9 +92,11 @@ export function createAssembler(catalog) {
       srcs.push(catalog.shadow.layers[0].src);
     }
     await Promise.all(srcs.map((src) => textureOf(src)));
-    for (const src of srcs) {
-      const texture = textures.get(src);
-      if (texture) prepareSolid(src, texture);
+    for (const layer of option.layers) {
+      const texture = textures.get(layer.src);
+      if (!texture) continue;
+      prepareSolid(layer.src, texture);
+      warmupVolume(layer.src, worldOf(layer), option.type, layer.role);
     }
   }
 
@@ -238,18 +240,25 @@ export function createAssembler(catalog) {
   }
 
   function preload() {
-    const srcs = catalog.options.flatMap((option) => option.layers.map((layer) => layer.src));
-    if (catalog.shadow) srcs.push(catalog.shadow.layers[0].src);
-    srcs.forEach((src) => {
-      textureOf(src).then((texture) => {
-        const run = () => prepareSolid(src, texture);
-        if (typeof requestIdleCallback === "function") {
-          requestIdleCallback(run, { timeout: 1800 });
-        } else {
-          window.setTimeout(run, 0);
-        }
+    catalog.options.forEach((option) => {
+      option.layers.forEach((layer) => {
+        textureOf(layer.src).then((texture) => {
+          const run = () => {
+            prepareSolid(layer.src, texture);
+            warmupVolume(layer.src, worldOf(layer), option.type, layer.role);
+          };
+          if (typeof requestIdleCallback === "function") {
+            requestIdleCallback(run, { timeout: 1800 });
+          } else {
+            window.setTimeout(run, 0);
+          }
+        });
       });
     });
+    if (catalog.shadow) {
+      const src = catalog.shadow.layers[0].src;
+      textureOf(src).then((texture) => prepareSolid(src, texture));
+    }
   }
 
   function reset() {
