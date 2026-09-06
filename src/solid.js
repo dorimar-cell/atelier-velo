@@ -5,7 +5,6 @@ const PREP_MAX = 320;
 const MESH_MAX = 420;
 const AXLE_COLOR = "#2b2b2d";
 const STEEL_COLOR = "#9a9894";
-const ROTOR_COLOR = "#9c9ca0";
 
 const TYPE_PRESET = {
   frame: { maxHalf: 0.078, zScale: 1.04, roughness: 0.56, metalness: 0.02, clearcoat: 0.04 },
@@ -14,7 +13,7 @@ const TYPE_PRESET = {
   saddle: { maxHalf: 0.03, zScale: 1.02, roughness: 0.66, metalness: 0.02, clearcoat: 0.02 },
   groupset: { maxHalf: 0.042, zScale: 1.02, roughness: 0.46, metalness: 0.14, clearcoat: 0.04 },
   cassette: { maxHalf: 0.07, zScale: 1, roughness: 0.38, metalness: 0.22, clearcoat: 0.03 },
-  brakes: { maxHalf: 0.016, zScale: 0.86, roughness: 0.42, metalness: 0.18, clearcoat: 0.04 },
+  brakes: { maxHalf: 0.016, zScale: 0.86, roughness: 0.42, metalness: 0.18, clearcoat: 0.04, keepHoles: true },
   bottles: { maxHalf: 0.028, zScale: 1.08, roughness: 0.56, metalness: 0.04, clearcoat: 0.03 },
 };
 
@@ -355,11 +354,11 @@ function scoreCircle(mask, width, height, cx, cy, radius) {
   let innerOn = 0;
   let innerTot = 0;
   const r0 = radius * 0.16;
-  const r1 = radius * 0.82;
+  const r1 = radius * 0.78;
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-      if (d > radius * 1.04) continue;
+      if (d > radius * 1.03) continue;
       const on = mask[y * width + x];
       if (d >= r1) {
         ringTot += 1;
@@ -372,18 +371,22 @@ function scoreCircle(mask, width, height, cx, cy, radius) {
   }
   if (ringTot < 12) return 0;
   const ring = ringOn / ringTot;
+  if (ring < 0.2) return 0;
   const inner = innerTot ? innerOn / innerTot : 0;
-  return ring * 0.72 + Math.min(inner, 0.85) * 0.28;
+  const compact = Math.min(1, (2 * radius) / Math.min(width, height));
+  return ring * 0.78 + Math.min(inner, 0.85) * 0.16 + compact * 0.06;
 }
 
 function fitRotorCircle(mask, width, height) {
   const candidates = [fitCircle(mask, width, height)];
-  if (width > height * 1.12) {
+  if (width > height * 1.08) {
     candidates.push(fitCircle(clipMask(mask, width, height, 0, width * 0.72), width, height));
     candidates.push(fitCircle(clipMask(mask, width, height, width * 0.28, width), width, height));
+    candidates.push(fitCircle(clipMask(mask, width, height, 0, Math.min(width, height * 1.08)), width, height));
+    candidates.push(fitCircle(clipMask(mask, width, height, Math.max(0, width - height * 1.08), width), width, height));
   }
   let best = null;
-  let bestScore = 0.42;
+  let bestScore = 0.26;
   for (const circle of candidates) {
     if (!circle) continue;
     const score = scoreCircle(mask, width, height, circle.cx, circle.cy, circle.radius);
@@ -437,12 +440,12 @@ function extractCaliperMask(mask, width, height, circle) {
           tail += 1;
         }
       }
-      if (maxD < circle.radius * 1.1 || cells.length < 22) continue;
+      if (maxD < circle.radius * 1.16 || cells.length < 22) continue;
       for (const i of cells) {
         const cx = i % width;
         const cy = Math.floor(i / width);
         const d = Math.hypot(cx + 0.5 - circle.cx, cy + 0.5 - circle.cy);
-        if (d < circle.radius * 0.84) continue;
+        if (d < circle.radius * 1.05) continue;
         out[i] = 1;
         kept += 1;
       }
@@ -761,6 +764,29 @@ function skin(preset, extra = {}) {
   });
 }
 
+function flipFacing(geometry) {
+  const index = geometry.getIndex();
+  if (index) {
+    const arr = index.array;
+    for (let i = 0; i < arr.length; i += 3) {
+      const mid = arr[i + 1];
+      arr[i + 1] = arr[i + 2];
+      arr[i + 2] = mid;
+    }
+    index.needsUpdate = true;
+  }
+  const normals = geometry.getAttribute("normal");
+  if (normals) {
+    for (let i = 0; i < normals.count; i += 1) {
+      normals.setXYZ(i, -normals.getX(i), -normals.getY(i), -normals.getZ(i));
+    }
+    normals.needsUpdate = true;
+  } else {
+    geometry.computeVertexNormals();
+  }
+  return geometry;
+}
+
 function makeGeometry(positions, uvs, indices) {
   if (indices.length < 3) return null;
   const geometry = new THREE.BufferGeometry();
@@ -773,7 +799,7 @@ function makeGeometry(positions, uvs, indices) {
 
 function buildInflateKit(data, pose, preset, maskOverride) {
   const sourceMask = maskOverride ?? data.mask;
-  const filled = fillSmallHoles(sourceMask, data.width, data.height);
+  const filled = preset.keepHoles || maskOverride ? sourceMask : fillSmallHoles(sourceMask, data.width, data.height);
   const limit = meshLimit(pose);
   const srcW = data.width;
   const srcH = data.height;
@@ -1005,46 +1031,60 @@ function buildAxleGeometry(worldR, rimHalf, role) {
   const shellR = worldR * 0.052;
   const flangeR = worldR * 0.074;
   const axleR = worldR * 0.019;
-  const capR = worldR * 0.028;
+  const capR = worldR * 0.026;
   const shellHalf = Math.max(worldR * (rear ? 0.088 : 0.068), rimHalf * 1.05);
   const axleHalf = worldR * (rear ? 0.198 : 0.15);
+  const flangeH = Math.max(worldR * 0.011, 0.0055);
   const body = [];
   const caps = [];
 
-  const shell = new THREE.CylinderGeometry(shellR, shellR, shellHalf * 2, 28);
+  const shell = new THREE.CylinderGeometry(shellR, shellR, shellHalf * 2, 28, 1, true);
   shell.rotateX(Math.PI / 2);
   body.push(shell);
 
-  for (const z of [-shellHalf * 0.76, shellHalf * 0.76]) {
-    const flange = new THREE.CylinderGeometry(flangeR, flangeR * 0.9, Math.max(worldR * 0.011, 0.0055), 28);
-    flange.rotateX(Math.PI / 2);
-    flange.translate(0, 0, z);
-    body.push(flange);
-  }
+  const driveFlange = new THREE.CylinderGeometry(flangeR, flangeR * 0.9, flangeH, 28);
+  driveFlange.rotateX(Math.PI / 2);
+  driveFlange.translate(0, 0, shellHalf * 0.76);
+  body.push(driveFlange);
+
+  const discFlange = new THREE.CylinderGeometry(flangeR * (rear ? 0.9 : 1), flangeR * 0.84, flangeH * 0.9, 28);
+  discFlange.rotateX(Math.PI / 2);
+  discFlange.translate(0, 0, -shellHalf * 0.76);
+  body.push(discFlange);
 
   if (rear) {
     const freehub = new THREE.CylinderGeometry(shellR * 0.84, shellR * 0.8, worldR * 0.068, 24);
     freehub.rotateX(Math.PI / 2);
     freehub.translate(0, 0, shellHalf * 0.62 + worldR * 0.028);
     body.push(freehub);
+
+    const carrier = new THREE.CylinderGeometry(shellR * 1.14, shellR * 1.02, worldR * 0.014, 28);
+    carrier.rotateX(Math.PI / 2);
+    carrier.translate(0, 0, -shellHalf * 0.76 - worldR * 0.011);
+    body.push(carrier);
+
+    const lock = new THREE.CylinderGeometry(shellR * 0.76, shellR * 0.7, worldR * 0.009, 20);
+    lock.rotateX(Math.PI / 2);
+    lock.translate(0, 0, -shellHalf * 0.76 - worldR * 0.02);
+    body.push(lock);
   }
 
-  const shaft = new THREE.CylinderGeometry(axleR, axleR, axleHalf * 2, 20);
+  const shaft = new THREE.CylinderGeometry(axleR, axleR, axleHalf * 2, 20, 1, true);
   shaft.rotateX(Math.PI / 2);
 
   for (const sign of [-1, 1]) {
     const z = sign * axleHalf;
-    const washer = new THREE.CylinderGeometry(capR * 1.18, capR * 1.08, worldR * 0.007, 24);
+    const washer = new THREE.CylinderGeometry(capR * 1.08, capR, worldR * 0.006, 20);
     washer.rotateX(Math.PI / 2);
-    washer.translate(0, 0, z - sign * worldR * 0.012);
+    washer.translate(0, 0, z - sign * worldR * 0.011);
     caps.push(washer);
-    const cap = new THREE.CylinderGeometry(capR, capR * 0.94, worldR * 0.015, 12);
+    const cap = new THREE.CylinderGeometry(capR * 0.92, capR * 0.86, worldR * 0.013, 12);
     cap.rotateX(Math.PI / 2);
     cap.translate(0, 0, z);
     caps.push(cap);
-    const hex = new THREE.CylinderGeometry(capR * 0.46, capR * 0.4, worldR * 0.01, 6);
+    const hex = new THREE.CylinderGeometry(capR * 0.42, capR * 0.36, worldR * 0.009, 6);
     hex.rotateX(Math.PI / 2);
-    hex.translate(0, 0, z + sign * worldR * 0.007);
+    hex.translate(0, 0, z + sign * worldR * 0.006);
     caps.push(hex);
   }
 
@@ -1116,8 +1156,10 @@ function buildWheelKit(data, pose, role) {
 
   const spokes = new THREE.RingGeometry(axle.spokeInner, rimInner * 0.985, 64);
   setRingUvs(spokes, circle.cx, circle.cy, width, height, sx, sy);
+  spokes.translate(0, 0, rimHalf * 0.14);
   const spokesBack = spokes.clone();
-  spokesBack.translate(0, 0, -0.003);
+  spokesBack.translate(0, 0, -rimHalf * 0.28);
+  flipFacing(spokesBack);
 
   return {
     tire,
@@ -1177,20 +1219,21 @@ function buildBrakeKit(data, pose, preset) {
   const circle = fitRotorCircle(mask, width, height);
   if (!circle) return null;
   if (circle.radius < Math.min(width, height) * 0.22) return null;
+  if (height > width * 1.15 && circle.radius * 2 > width * 0.72) return null;
   const sx = pose.w / width;
   const sy = pose.h / height;
   const ox = (circle.cx / width - 0.5) * pose.w;
   const oy = (0.5 - circle.cy / height) * pose.h;
   const worldR = circle.radius * ((sx + sy) * 0.5) * 1.004;
   const hole = worldR * 0.118;
-  const trackInner = worldR * 0.76;
+  const trackInner = worldR * 0.78;
   const thick = Math.max(0.0034, Math.min(preset.maxHalf * 0.7, worldR * 0.017));
   const rotorPoints = [
     new THREE.Vector2(trackInner, -thick * 0.28),
-    new THREE.Vector2(trackInner + worldR * 0.03, -thick * 0.5),
-    new THREE.Vector2(worldR, -thick * 0.5),
-    new THREE.Vector2(worldR, thick * 0.5),
-    new THREE.Vector2(trackInner + worldR * 0.03, thick * 0.5),
+    new THREE.Vector2(trackInner + worldR * 0.025, -thick * 0.48),
+    new THREE.Vector2(worldR * 0.988, -thick * 0.48),
+    new THREE.Vector2(worldR * 0.988, thick * 0.48),
+    new THREE.Vector2(trackInner + worldR * 0.025, thick * 0.48),
     new THREE.Vector2(trackInner, thick * 0.28),
   ];
   const rotor = new THREE.LatheGeometry(rotorPoints, 80);
@@ -1202,8 +1245,9 @@ function buildBrakeKit(data, pose, preset) {
   face.translate(0, 0, thick * 0.52);
   const faceBack = face.clone();
   faceBack.translate(0, 0, -thick * 1.04);
+  flipFacing(faceBack);
 
-  const hat = new THREE.CylinderGeometry(hole * 1.22, hole * 1.08, thick * 1.05, 28);
+  const hat = new THREE.CylinderGeometry(hole * 1.16, hole * 1.04, thick * 0.9, 24, 1, true);
   hat.rotateX(Math.PI / 2);
   hat.computeVertexNormals();
 
@@ -1587,46 +1631,29 @@ function brakeMesh(texture, src, pose, preset, layer) {
   }
   if (!kit) return null;
   const group = new THREE.Group();
-  const rotor = new THREE.Mesh(
-    kit.rotor.clone(),
-    skin(preset, {
-      color: ROTOR_COLOR,
-      roughness: 0.28,
-      metalness: 0.62,
-      envMapIntensity: 0.32,
-    }),
-  );
-  const hat = new THREE.Mesh(
-    kit.hat.clone(),
-    skin(preset, {
-      color: AXLE_COLOR,
-      roughness: 0.36,
-      metalness: 0.4,
-      envMapIntensity: 0.22,
-    }),
-  );
   const rotorPhoto = photoSkin(texture, preset, {
     metalness: 0.2,
     roughness: 0.38,
-    alphaTest: 0.12,
-    transparent: true,
+    alphaTest: 0.28,
+    transparent: false,
     emissiveIntensity: 0.3,
+    side: THREE.FrontSide,
   });
   const face = new THREE.Mesh(kit.face.clone(), rotorPhoto);
   const faceBack = new THREE.Mesh(kit.faceBack.clone(), rotorPhoto.clone());
-  for (const mesh of [rotor, hat, faceBack, face]) {
+  for (const mesh of [faceBack, face]) {
     mesh.position.set(kit.origin.x, kit.origin.y, 0);
     mesh.renderOrder = layer.z;
     group.add(mesh);
   }
   if (kit.caliperMask) {
-    const calKey = cacheKey("inflate", src, pose, preset, "caliper");
+    const calKey = cacheKey("inflate", src, pose, preset, "caliper-thin");
     let calKit = geomCache.get(calKey);
     if (!calKit) {
       calKit = buildInflateKit(
         data,
         pose,
-        { ...preset, maxHalf: Math.min(preset.maxHalf, 0.015), zScale: 0.94 },
+        { ...preset, maxHalf: 0.007, zScale: 0.52, keepHoles: true },
         kit.caliperMask,
       );
       if (calKit) geomCache.set(calKey, calKit);

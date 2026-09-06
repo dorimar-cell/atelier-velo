@@ -118,13 +118,16 @@ export function createAssembler(catalog) {
       const texture = textures.get(layer.src);
       if (!texture) continue;
       prepareSolid(layer.src, texture);
-      warmupVolume(layer.src, worldOf(layer), option.type, layer.role);
+      warmupVolume(layer.src, worldOf(layer, option.type), option.type, layer.role);
     }
   }
 
-  function worldOf(layer) {
+  function worldOf(layer, type) {
     const pose = bboxToWorld(layer.bbox, catalog.canvas, worldH);
     pose.z = MIDPLANE[layer.role] ?? layer.z * 0.0024;
+    if (type === "brakes") {
+      pose.z = layer.role === "rear" ? -0.042 : -0.04;
+    }
     const join = JOIN[layer.role];
     if (join) {
       pose.x += join.x;
@@ -147,7 +150,7 @@ export function createAssembler(catalog) {
   }
 
   function makeMesh(layer, type) {
-    const pose = worldOf(layer);
+    const pose = worldOf(layer, type);
     if (type === "shadow" || layer.role === "shadow") {
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(pose.w, pose.h),
@@ -286,7 +289,7 @@ export function createAssembler(catalog) {
         textureOf(layer.src).then((texture) => {
           const run = () => {
             prepareSolid(layer.src, texture);
-            warmupVolume(layer.src, worldOf(layer), option.type, layer.role);
+            warmupVolume(layer.src, worldOf(layer, option.type), option.type, layer.role);
           };
           if (typeof requestIdleCallback === "function") {
             requestIdleCallback(run, { timeout: 1800 });
